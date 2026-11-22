@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 func TestPerRequestOverrides(t *testing.T) {
@@ -28,7 +28,7 @@ func TestPerRequestOverrides(t *testing.T) {
 	// Default base URL is unreachable; the request must still land via the
 	// base_url override, with the per-request key and model winning over defaults.
 	g := NewChatGenerator("default-key", "default-model").WithBaseURL("http://invalid.invalid").WithAllowedBaseURLs(srv.URL)
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{
 		UserPrompt: "hi",
 		Overrides:  map[string]any{"api_key": "override-key", "model": "override-model", "base_url": srv.URL},
 	}); err != nil {
@@ -40,7 +40,7 @@ func TestPerRequestOverrides(t *testing.T) {
 
 	// The override copy must NOT mutate the generator: a no-override call uses defaults.
 	g.WithBaseURL(srv.URL)
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: "hi"}); err != nil {
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "hi"}); err != nil {
 		t.Fatal(err)
 	}
 	if gotKey != "default-key" || gotModel != "default-model" {
@@ -64,7 +64,7 @@ func TestGenerateStreamWithOverrides(t *testing.T) {
 	// Streaming is the primary chat path: the per-request overrides must reach the
 	// wire there too (not just in the sync Generate).
 	g := NewChatGenerator("default-key", "default-model").WithBaseURL("http://invalid.invalid").WithAllowedBaseURLs(srv.URL)
-	chunks, results, err := g.GenerateStream(context.Background(), loom.GenerateRequest{
+	chunks, results, err := g.GenerateStream(context.Background(), noewright.GenerateRequest{
 		UserPrompt: "hi",
 		Overrides:  map[string]any{"api_key": "override-key", "model": "override-model", "base_url": srv.URL},
 	})
@@ -80,7 +80,7 @@ func TestGenerateStreamWithOverrides(t *testing.T) {
 
 	// The override copy must not mutate the generator: a no-override stream uses defaults.
 	g.WithBaseURL(srv.URL)
-	chunks2, results2, err := g.GenerateStream(context.Background(), loom.GenerateRequest{UserPrompt: "hi"})
+	chunks2, results2, err := g.GenerateStream(context.Background(), noewright.GenerateRequest{UserPrompt: "hi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +104,7 @@ func TestBaseURLOverrideRejectedUnlessAllowlisted(t *testing.T) {
 	defer srv.Close()
 
 	g := NewChatGenerator("secret-key", "m") // no WithAllowedBaseURLs
-	_, err := g.Generate(context.Background(), loom.GenerateRequest{
+	_, err := g.Generate(context.Background(), noewright.GenerateRequest{
 		UserPrompt: "hi",
 		Overrides:  map[string]any{"base_url": srv.URL},
 	})
@@ -133,10 +133,10 @@ func TestVerify(t *testing.T) {
 	if info, err := g.Verify(context.Background(), nil); err != nil || info.ID != "gpt-test" {
 		t.Fatalf("info %+v err %v", info, err)
 	}
-	if _, err := g.Verify(context.Background(), map[string]any{"api_key": "bad"}); !errors.Is(err, loom.ErrKeyRejected) {
+	if _, err := g.Verify(context.Background(), map[string]any{"api_key": "bad"}); !errors.Is(err, noewright.ErrKeyRejected) {
 		t.Fatalf("err = %v, want ErrKeyRejected", err)
 	}
-	if _, err := g.Verify(context.Background(), map[string]any{"model": "nope"}); err == nil || errors.Is(err, loom.ErrKeyRejected) {
+	if _, err := g.Verify(context.Background(), map[string]any{"model": "nope"}); err == nil || errors.Is(err, noewright.ErrKeyRejected) {
 		t.Fatalf("unknown model: err = %v, want a not-found error", err)
 	}
 }

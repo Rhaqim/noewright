@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rhaqim/loom-dnd/domain"
-	"github.com/rhaqim/loom-dnd/game"
-	"github.com/rhaqim/loom-dnd/store"
+	"github.com/rhaqim/noewright-dnd/domain"
+	"github.com/rhaqim/noewright-dnd/game"
+	"github.com/rhaqim/noewright-dnd/store"
 	"github.com/spf13/cobra"
 )
 

@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/harness"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/harness"
 )
 
 // TestReport extends harness.TestReport with a top-level Passed field
@@ -15,7 +15,7 @@ type TestReport struct {
 	Passed bool
 }
 
-func runTestPlan(ctx context.Context, e *loom.Engine, plan *harness.TestPlan) (*TestReport, error) {
+func runTestPlan(ctx context.Context, e *noewright.Engine, plan *harness.TestPlan) (*TestReport, error) {
 	r, err := harness.Run(ctx, e, plan)
 	if err != nil {
 		return nil, err

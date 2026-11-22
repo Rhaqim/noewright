@@ -15,7 +15,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // Agent slugs. Each is a loom agent backed by a versioned prompt pair.
@@ -53,7 +53,7 @@ type components struct {
 // author-sys.v3.txt alone bumps only the system prompt — the user template and
 // schema at their existing versions are reused (referenced, not duplicated).
 // Returns, per agent, the sorted list of composed versions.
-func Seed(ctx context.Context, e *loom.Engine, dir string) (map[string][]int, error) {
+func Seed(ctx context.Context, e *noewright.Engine, dir string) (map[string][]int, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, fmt.Errorf("read prompts dir %q: %w", dir, err)
@@ -79,9 +79,9 @@ func Seed(ctx context.Context, e *loom.Engine, dir string) (map[string][]int, er
 		if err != nil {
 			return nil, err
 		}
-		kind := loom.PromptKindSystem
+		kind := noewright.PromptKindSystem
 		if part == "user" {
-			kind = loom.PromptKindUserTemplate
+			kind = noewright.PromptKindUserTemplate
 		}
 		p, err := seedPrompt(ctx, e, fmt.Sprintf("%s-%s", agent, part), ver, kind, string(body))
 		if err != nil {
@@ -137,11 +137,11 @@ func Seed(ctx context.Context, e *loom.Engine, dir string) (map[string][]int, er
 	return out, nil
 }
 
-func seedPrompt(ctx context.Context, e *loom.Engine, slug string, ver int, kind loom.PromptKind, body string) (*loom.Prompt, error) {
+func seedPrompt(ctx context.Context, e *noewright.Engine, slug string, ver int, kind noewright.PromptKind, body string) (*noewright.Prompt, error) {
 	if existing, err := e.Prompts().Get(ctx, "", slug, ver); err == nil && existing.Body == body {
 		return existing, nil // unchanged → reuse (lets you re-run the same version)
 	}
-	p := &loom.Prompt{Slug: slug, Version: ver, Kind: kind, Category: "conexus", Body: body}
+	p := &noewright.Prompt{Slug: slug, Version: ver, Kind: kind, Category: "conexus", Body: body}
 	if err := e.Prompts().Create(ctx, p); err != nil {
 		return nil, fmt.Errorf("seed prompt %s v%d: %w (bump the version to change a shipped prompt)", slug, ver, err)
 	}
@@ -155,16 +155,16 @@ var jsonAgents = map[string]bool{AgentLogician: true, AgentSensory: true, AgentM
 
 // seedResponseFormat creates (idempotently) a reusable response-format record
 // "<agent>-schema" at version ver and returns its id.
-func seedResponseFormat(ctx context.Context, e *loom.Engine, agent string, ver int, raw string) (uuid.UUID, error) {
+func seedResponseFormat(ctx context.Context, e *noewright.Engine, agent string, ver int, raw string) (uuid.UUID, error) {
 	slug := agent + "-schema"
 	if existing, err := e.ResponseFormats().Get(ctx, "", slug, ver); err == nil {
 		return existing.ID, nil
 	}
-	rf, err := loom.ResponseFormatJSON(raw, true)
+	rf, err := noewright.ResponseFormatJSON(raw, true)
 	if err != nil {
 		return uuid.Nil, fmt.Errorf("response format %s v%d: %w", slug, ver, err)
 	}
-	rec := &loom.ResponseFormatRecord{Slug: slug, Version: ver, Schema: rf.Schema, StrictMode: rf.StrictMode}
+	rec := &noewright.ResponseFormatRecord{Slug: slug, Version: ver, Schema: rf.Schema, StrictMode: rf.StrictMode}
 	if err := e.ResponseFormats().Create(ctx, rec); err != nil {
 		return uuid.Nil, err
 	}
@@ -174,24 +174,24 @@ func seedResponseFormat(ctx context.Context, e *loom.Engine, agent string, ver i
 // composeResponseFormat resolves an agent's response format at version n: a
 // reference to the highest-≤n schema record if any (shared, not copied), else an
 // inline json_object for JSON agents, else nothing.
-func composeResponseFormat(agent string, schema map[int]uuid.UUID, n int) (*uuid.UUID, *loom.ResponseFormat) {
+func composeResponseFormat(agent string, schema map[int]uuid.UUID, n int) (*uuid.UUID, *noewright.ResponseFormat) {
 	if id, ok := highestLE(schema, n); ok {
 		return &id, nil
 	}
 	if jsonAgents[agent] {
-		return nil, &loom.ResponseFormat{} // json_object
+		return nil, &noewright.ResponseFormat{} // json_object
 	}
 	return nil, nil
 }
 
 // seedAgent creates an agent that composes specific system/user prompt versions
 // and a response format — each an independent reference.
-func seedAgent(ctx context.Context, e *loom.Engine, slug string, ver int, sysID, userID uuid.UUID, rfID *uuid.UUID, rfInline *loom.ResponseFormat) error {
+func seedAgent(ctx context.Context, e *noewright.Engine, slug string, ver int, sysID, userID uuid.UUID, rfID *uuid.UUID, rfInline *noewright.ResponseFormat) error {
 	if _, err := e.Agents().Get(ctx, "", slug, ver); err == nil {
 		return nil
 	}
-	return e.Agents().Create(ctx, &loom.Agent{
-		Slug: slug, Version: ver, Category: "conexus", Modal: loom.ModalityText,
+	return e.Agents().Create(ctx, &noewright.Agent{
+		Slug: slug, Version: ver, Category: "conexus", Modal: noewright.ModalityText,
 		GeneratorSlug:    GenText,
 		SystemPromptID:   sysID,
 		UserTemplateID:   userID,

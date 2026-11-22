@@ -7,13 +7,13 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom-dnd/domain"
-	"github.com/rhaqim/loom-dnd/store"
-	"github.com/rhaqim/loom/generator/anthropic"
-	"github.com/rhaqim/loom/generator/echo"
-	"github.com/rhaqim/loom/generator/openai"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright-dnd/domain"
+	"github.com/rhaqim/noewright-dnd/store"
+	"github.com/rhaqim/noewright/generator/anthropic"
+	"github.com/rhaqim/noewright/generator/echo"
+	"github.com/rhaqim/noewright/generator/openai"
+	"github.com/rhaqim/noewright/schema"
 )
 
 const (
@@ -22,22 +22,22 @@ const (
 	dmUserPromptVer  = 1
 )
 
-// Engine is the DND game engine — wraps loom.Engine and adds D&D orchestration.
+// Engine is the DND game engine — wraps noewright.Engine and adds D&D orchestration.
 type Engine struct {
-	Loom  *loom.Engine
+	Loom  *noewright.Engine
 	Store *store.Store
 }
 
 // New creates a DND Engine from a *sql.DB.
 // echo is always registered; openai/anthropic are added when API key env vars are set.
 func New(ctx context.Context, db *sql.DB, st *store.Store) (*Engine, error) {
-	cfg := loom.Config{
+	cfg := noewright.Config{
 		DB:           db,
-		Dialect:      loom.DialectPostgres,
+		Dialect:      noewright.DialectPostgres,
 		SchemaPrefix: loomSchemaPrefix,
 		Generators:   AvailableGenerators(),
 	}
-	e, err := loom.New(cfg)
+	e, err := noewright.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loom engine: %w", err)
 	}
@@ -50,8 +50,8 @@ func ApplyLoomSchema(ctx context.Context, db *sql.DB) error {
 }
 
 // AvailableGenerators returns the registered generators based on env vars.
-func AvailableGenerators() map[string]loom.Generator {
-	gens := map[string]loom.Generator{
+func AvailableGenerators() map[string]noewright.Generator {
+	gens := map[string]noewright.Generator{
 		"echo": echo.New("[DM]"),
 	}
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
@@ -84,10 +84,10 @@ func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlu
 	genSlug := BestGeneratorSlug()
 
 	// ── System prompt ────────────────────────────────────────────────────
-	sysPrompt := &loom.Prompt{
+	sysPrompt := &noewright.Prompt{
 		Slug:     sysSlug,
 		Version:  1,
-		Kind:     loom.PromptKindSystem,
+		Kind:     noewright.PromptKindSystem,
 		Category: "dnd-dm",
 		Body:     DMSystemPrompt(topic.Name, topic.Setting, topic.Edition),
 		Notes:    "Auto-seeded by loom-dnd for topic: " + topic.Name,
@@ -102,10 +102,10 @@ func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlu
 	}
 
 	// ── User template ─────────────────────────────────────────────────────
-	userPrompt := &loom.Prompt{
+	userPrompt := &noewright.Prompt{
 		Slug:     dmUserPromptSlug,
 		Version:  dmUserPromptVer,
-		Kind:     loom.PromptKindUserTemplate,
+		Kind:     noewright.PromptKindUserTemplate,
 		Category: "dnd-dm",
 		Body:     DMUserTemplate(),
 		Notes:    "Shared DM user template — injects character state and player action",
@@ -120,11 +120,11 @@ func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlu
 	}
 
 	// ── DM agent ──────────────────────────────────────────────────────────
-	agent := &loom.Agent{
+	agent := &noewright.Agent{
 		Slug:           agentSlug,
 		Version:        1,
 		Category:       "dnd-dm",
-		Modal:          loom.ModalityText,
+		Modal:          noewright.ModalityText,
 		GeneratorSlug:  genSlug,
 		SystemPromptID: sp.ID,
 		UserTemplateID: ut.ID,
@@ -137,7 +137,7 @@ func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlu
 }
 
 // StartSession loads or creates the loom Session for a campaign.
-func (e *Engine) StartSession(ctx context.Context, campaign *domain.Campaign, character *domain.Character, platformID string) (*loom.Session, error) {
+func (e *Engine) StartSession(ctx context.Context, campaign *domain.Campaign, character *domain.Character, platformID string) (*noewright.Session, error) {
 	if campaign.LoomSessionID != "" {
 		sessID, err := uuid.Parse(campaign.LoomSessionID)
 		if err != nil {
@@ -152,11 +152,11 @@ func (e *Engine) StartSession(ctx context.Context, campaign *domain.Campaign, ch
 		return sess, nil
 	}
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: platformID,
 		Tags:       []string{"dnd:true", "campaign:" + campaign.ID.String()},
-		State: loom.State{
-			Modality: loom.ModalityText,
+		State: noewright.State{
+			Modality: noewright.ModalityText,
 			Vars:     character.VarsMap(),
 		},
 	}
@@ -172,18 +172,18 @@ func (e *Engine) StartSession(ctx context.Context, campaign *domain.Campaign, ch
 
 // Play executes one player turn and returns the DM's response.
 // Streams chunks to stdout if the generator supports streaming.
-func (e *Engine) Play(ctx context.Context, sess *loom.Session, character *domain.Character, agentSlug, playerInput string) (string, error) {
+func (e *Engine) Play(ctx context.Context, sess *noewright.Session, character *domain.Character, agentSlug, playerInput string) (string, error) {
 	// Keep session vars in sync with the live character sheet.
 	sess.State.Vars = character.VarsMap()
 
 	var streamed string
-	step, err := e.Loom.RunStep(ctx, sess, loom.StepRequest{
+	step, err := e.Loom.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug: agentSlug,
-		Action: &loom.Action{
-			Kind:    loom.ActionFreeText,
+		Action: &noewright.Action{
+			Kind:    noewright.ActionFreeText,
 			Payload: map[string]any{"text": playerInput},
 		},
-		OnChunk: func(chunk loom.Chunk) {
+		OnChunk: func(chunk noewright.Chunk) {
 			fmt.Print(chunk.Content)
 			streamed += chunk.Content
 		},
@@ -194,7 +194,7 @@ func (e *Engine) Play(ctx context.Context, sess *loom.Session, character *domain
 	if streamed != "" {
 		return streamed, nil
 	}
-	if tr, ok := step.Result.(*loom.TextResult); ok {
+	if tr, ok := step.Result.(*noewright.TextResult); ok {
 		return tr.Content, nil
 	}
 	return "", nil

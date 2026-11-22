@@ -24,9 +24,9 @@ import (
 
 	_ "github.com/lib/pq"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/generator/echo"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/generator/echo"
+	"github.com/rhaqim/noewright/schema"
 )
 
 func main() {
@@ -65,10 +65,10 @@ func main() {
 	fmt.Println("[story] schema applied")
 
 	// Build the engine with the echo (stub) generator.
-	e, err := loom.New(loom.Config{
+	e, err := noewright.New(noewright.Config{
 		DB:      db,
-		Dialect: loom.DialectPostgres,
-		Generators: map[string]loom.Generator{
+		Dialect: noewright.DialectPostgres,
+		Generators: map[string]noewright.Generator{
 			"echo": echo.New("[narrator]"),
 		},
 		Logger: &stdLogger{},
@@ -78,17 +78,17 @@ func main() {
 	}
 
 	// Seed a system prompt and user template (idempotent via slug+version).
-	sysPrmt := &loom.Prompt{
+	sysPrmt := &noewright.Prompt{
 		Slug:     "narrator-system",
 		Version:  1,
-		Kind:     loom.PromptKindSystem,
+		Kind:     noewright.PromptKindSystem,
 		Category: "story",
 		Body:     "You are a creative narrator for an interactive fantasy story.",
 	}
-	userTmpl := &loom.Prompt{
+	userTmpl := &noewright.Prompt{
 		Slug:     "narrator-user",
 		Version:  1,
-		Kind:     loom.PromptKindUserTemplate,
+		Kind:     noewright.PromptKindUserTemplate,
 		Category: "story",
 		Body:     `Continue the story. The player chose: {{.Action.Payload.text}}. Current scene: {{index .Vars "scene"}}.`,
 	}
@@ -100,11 +100,11 @@ func main() {
 	sys, _ := e.Prompts().Get(ctx, "", "narrator-system", 1)
 	ut, _ := e.Prompts().Get(ctx, "", "narrator-user", 1)
 
-	agent := &loom.Agent{
+	agent := &noewright.Agent{
 		Slug:           "narrator",
 		Version:        1,
 		Category:       "story",
-		Modal:          loom.ModalityText,
+		Modal:          noewright.ModalityText,
 		GeneratorSlug:  "echo",
 		SystemPromptID: sys.ID,
 		UserTemplateID: ut.ID,
@@ -114,11 +114,11 @@ func main() {
 	// -----------------------------------------------------------------------
 	// Main session: three-step narrative
 	// -----------------------------------------------------------------------
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: "player-001",
 		Tags:       []string{"example"},
-		State: loom.State{
-			Modality: loom.ModalityText,
+		State: noewright.State{
+			Modality: noewright.ModalityText,
 			Vars: map[string]any{
 				"scene": "A dark forest path. Two roads diverge ahead.",
 			},
@@ -139,17 +139,17 @@ func main() {
 	var forkSessionID = sess.ID
 
 	for i, payload := range actions {
-		step, err := e.RunStep(ctx, sess, loom.StepRequest{
+		step, err := e.RunStep(ctx, sess, noewright.StepRequest{
 			AgentSlug: "narrator",
-			Action: &loom.Action{
-				Kind:    loom.ActionFreeText,
+			Action: &noewright.Action{
+				Kind:    noewright.ActionFreeText,
 				Payload: map[string]any{"text": payload},
 			},
 		})
 		if err != nil {
 			log.Fatalf("step %d: %v", i, err)
 		}
-		tr := step.Result.(*loom.TextResult)
+		tr := step.Result.(*noewright.TextResult)
 		fmt.Printf("\n  step[%d] action=%q\n  → %s\n", i, payload, tr.Content)
 
 		// Capture the session ID just before the fork point.
@@ -168,10 +168,10 @@ func main() {
 	}
 	fmt.Printf("[story] branch session %s created\n", branch.ID)
 
-	altStep, err := e.RunStep(ctx, branch, loom.StepRequest{
+	altStep, err := e.RunStep(ctx, branch, noewright.StepRequest{
 		AgentSlug: "narrator",
-		Action: &loom.Action{
-			Kind:    loom.ActionFreeText,
+		Action: &noewright.Action{
+			Kind:    noewright.ActionFreeText,
 			Payload: map[string]any{"text": "Take the RIGHT road toward the mountains"},
 		},
 	})
@@ -180,7 +180,7 @@ func main() {
 	}
 	fmt.Printf("\n  [branch] action=%q\n  → %s\n",
 		"Take the RIGHT road toward the mountains",
-		altStep.Result.(*loom.TextResult).Content)
+		altStep.Result.(*noewright.TextResult).Content)
 
 	// -----------------------------------------------------------------------
 	// Cost summary
@@ -198,7 +198,7 @@ func main() {
 }
 
 // seedPrompt inserts a prompt if it doesn't already exist.
-func seedPrompt(ctx context.Context, e *loom.Engine, p *loom.Prompt) {
+func seedPrompt(ctx context.Context, e *noewright.Engine, p *noewright.Prompt) {
 	existing, _ := e.Prompts().Get(ctx, "", p.Slug, p.Version)
 	if existing != nil {
 		return
@@ -209,7 +209,7 @@ func seedPrompt(ctx context.Context, e *loom.Engine, p *loom.Prompt) {
 }
 
 // seedAgent inserts an agent if it doesn't already exist.
-func seedAgent(ctx context.Context, e *loom.Engine, a *loom.Agent) {
+func seedAgent(ctx context.Context, e *noewright.Engine, a *noewright.Agent) {
 	existing, _ := e.Agents().Get(ctx, "", a.Slug, a.Version)
 	if existing != nil {
 		return

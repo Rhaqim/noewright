@@ -15,7 +15,7 @@ import (
 	"strings"
 	"testing"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // seen is what a fake server observed about the last request.
@@ -89,7 +89,7 @@ func sseServer(t *testing.T, stream string, s *seen) *httptest.Server {
 	return srv
 }
 
-func drain(chunks <-chan loom.Chunk, results <-chan loom.Result) (string, loom.Result) {
+func drain(chunks <-chan noewright.Chunk, results <-chan noewright.Result) (string, noewright.Result) {
 	var b strings.Builder
 	for c := range chunks {
 		b.WriteString(c.Content)
@@ -111,7 +111,7 @@ func systemText(body map[string]any) string {
 func TestStreamParsesSSEAndUsage(t *testing.T) {
 	var s seen
 	srv := sseServer(t, sseStream(12, 5, "end_turn", "", "Hello ", "world"), &s)
-	chunks, results, err := NewChatGenerator("k", "claude-test").WithBaseURL(srv.URL).GenerateStream(context.Background(), loom.GenerateRequest{UserPrompt: "hi"})
+	chunks, results, err := NewChatGenerator("k", "claude-test").WithBaseURL(srv.URL).GenerateStream(context.Background(), noewright.GenerateRequest{UserPrompt: "hi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,9 +119,9 @@ func TestStreamParsesSSEAndUsage(t *testing.T) {
 	if text != "Hello world" {
 		t.Errorf("streamed chunks = %q", text)
 	}
-	tr, ok := res.(*loom.TextResult)
+	tr, ok := res.(*noewright.TextResult)
 	if !ok {
-		t.Fatalf("result type %T (%v), want *loom.TextResult", res, res.Metadata()["error"])
+		t.Fatalf("result type %T (%v), want *noewright.TextResult", res, res.Metadata()["error"])
 	}
 	if tr.Content != "Hello world" || tr.InputTokens != 12 || tr.OutputTokens != 5 || tr.FinishReason != "end_turn" {
 		t.Errorf("result = %+v", tr)
@@ -140,11 +140,11 @@ func TestStreamParsesSSEAndUsage(t *testing.T) {
 func TestGenerateRequestShape(t *testing.T) {
 	var s seen
 	srv := jsonServer(t, 200, message(`{"answer":42}`, "end_turn", 3, 4, ""), &s)
-	res, err := NewChatGenerator("secret", "claude-test").WithBaseURL(srv.URL).Generate(context.Background(), loom.GenerateRequest{
+	res, err := NewChatGenerator("secret", "claude-test").WithBaseURL(srv.URL).Generate(context.Background(), noewright.GenerateRequest{
 		SystemPrompt:   "be helpful",
 		UserPrompt:     "q",
-		ResponseFormat: &loom.ResponseFormat{Schema: map[string]any{"type": "object"}, StrictMode: true},
-		Params:         loom.GenerateParams{Temperature: 0.4, TopP: 0.9, MaxTokens: 777},
+		ResponseFormat: &noewright.ResponseFormat{Schema: map[string]any{"type": "object"}, StrictMode: true},
+		Params:         noewright.GenerateParams{Temperature: 0.4, TopP: 0.9, MaxTokens: 777},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -163,7 +163,7 @@ func TestGenerateRequestShape(t *testing.T) {
 	if sys := systemText(s.body); !strings.Contains(sys, "be helpful") || !strings.Contains(sys, `"type":"object"`) {
 		t.Errorf("system prompt missing schema injection: %q", sys)
 	}
-	if sr, ok := res.(*loom.StructuredResult); !ok || sr.Data["answer"] != float64(42) || res.Metadata()["model"] != "claude-test" {
+	if sr, ok := res.(*noewright.StructuredResult); !ok || sr.Data["answer"] != float64(42) || res.Metadata()["model"] != "claude-test" {
 		t.Fatalf("result = %#v", res)
 	}
 }
@@ -172,7 +172,7 @@ func TestGenerateRequestShape(t *testing.T) {
 func TestBaseURLWithV1Suffix(t *testing.T) {
 	var s seen
 	srv := jsonServer(t, 200, message("ok", "end_turn", 1, 1, ""), &s)
-	if _, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL+"/v1").Generate(context.Background(), loom.GenerateRequest{UserPrompt: "hi"}); err != nil {
+	if _, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL+"/v1").Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "hi"}); err != nil {
 		t.Fatal(err)
 	}
 	if s.path != "/v1/messages" {
@@ -186,7 +186,7 @@ func TestPerRequestOverrides(t *testing.T) {
 	// Default base URL is unreachable; the request must still land via the
 	// base_url override, with the per-request key and model winning over defaults.
 	g := NewChatGenerator("default-key", "default-model").WithBaseURL("http://invalid.invalid").WithAllowedBaseURLs(srv.URL)
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{
 		UserPrompt: "hi",
 		Overrides:  map[string]any{"api_key": "override-key", "model": "override-model", "base_url": srv.URL},
 	}); err != nil {
@@ -197,7 +197,7 @@ func TestPerRequestOverrides(t *testing.T) {
 	}
 	// The override copy must NOT mutate the generator: a no-override call uses defaults.
 	g.WithBaseURL(srv.URL)
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: "hi"}); err != nil {
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "hi"}); err != nil {
 		t.Fatal(err)
 	}
 	if s.bearer != "default-key" || s.body["model"] != "default-model" {
@@ -211,7 +211,7 @@ func TestGenerateStreamWithOverrides(t *testing.T) {
 	// Streaming is the primary chat path: the per-request overrides must reach the
 	// wire there too (not just in the sync Generate).
 	g := NewChatGenerator("default-key", "default-model").WithBaseURL("http://invalid.invalid").WithAllowedBaseURLs(srv.URL)
-	chunks, results, err := g.GenerateStream(context.Background(), loom.GenerateRequest{
+	chunks, results, err := g.GenerateStream(context.Background(), noewright.GenerateRequest{
 		UserPrompt: "hi",
 		Overrides:  map[string]any{"api_key": "override-key", "model": "override-model", "base_url": srv.URL},
 	})
@@ -223,7 +223,7 @@ func TestGenerateStreamWithOverrides(t *testing.T) {
 		t.Fatalf("streaming overrides not applied: %+v", s)
 	}
 	g.WithBaseURL(srv.URL)
-	chunks, results, err = g.GenerateStream(context.Background(), loom.GenerateRequest{UserPrompt: "hi"})
+	chunks, results, err = g.GenerateStream(context.Background(), noewright.GenerateRequest{UserPrompt: "hi"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +241,7 @@ func TestBaseURLOverrideRejectedUnlessAllowlisted(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached = true }))
 	defer srv.Close()
 	g := NewChatGenerator("secret-key", "m") // no WithAllowedBaseURLs
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: "hi", Overrides: map[string]any{"base_url": srv.URL}}); err == nil {
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "hi", Overrides: map[string]any{"base_url": srv.URL}}); err == nil {
 		t.Fatal("expected base_url override to be rejected, got nil error")
 	}
 	if reached {
@@ -255,7 +255,7 @@ func TestEnvironmentIsIgnored(t *testing.T) {
 	srv := jsonServer(t, 200, message("ok", "end_turn", 1, 1, ""), &s)
 	t.Setenv("ANTHROPIC_BASE_URL", "http://invalid.invalid")
 	t.Setenv("ANTHROPIC_API_KEY", "env-key")
-	if _, err := NewChatGenerator("configured", "m").WithBaseURL(srv.URL).Generate(context.Background(), loom.GenerateRequest{UserPrompt: "hi"}); err != nil {
+	if _, err := NewChatGenerator("configured", "m").WithBaseURL(srv.URL).Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "hi"}); err != nil {
 		t.Fatal(err)
 	}
 	if s.bearer != "configured" {
@@ -265,9 +265,9 @@ func TestEnvironmentIsIgnored(t *testing.T) {
 
 func TestRefusalIsRejected(t *testing.T) {
 	srv := jsonServer(t, 200, message("", "refusal", 1, 0, `,"stop_details":{"type":"refusal","category":"cyber","explanation":"declined"}`), nil)
-	_, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL).Generate(context.Background(), loom.GenerateRequest{UserPrompt: "q"})
-	var ge *loom.GenerationError
-	if !errors.As(err, &ge) || ge.Kind != loom.GenerationRejected {
+	_, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL).Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "q"})
+	var ge *noewright.GenerationError
+	if !errors.As(err, &ge) || ge.Kind != noewright.GenerationRejected {
 		t.Fatalf("err = %v, want GenerationRejected", err)
 	}
 	if !strings.Contains(ge.Message, "cyber") || !strings.Contains(ge.Message, "declined") {
@@ -277,12 +277,12 @@ func TestRefusalIsRejected(t *testing.T) {
 
 func TestStreamingRefusalFailsResult(t *testing.T) {
 	srv := sseServer(t, sseStream(3, 2, "refusal", `,"stop_details":{"type":"refusal","category":"bio","explanation":null}`, "partial"), nil)
-	chunks, results, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL).GenerateStream(context.Background(), loom.GenerateRequest{UserPrompt: "q"})
+	chunks, results, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL).GenerateStream(context.Background(), noewright.GenerateRequest{UserPrompt: "q"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	_, res := drain(chunks, results)
-	if res.Status() != loom.ResultStatusFailed {
+	if res.Status() != noewright.ResultStatusFailed {
 		t.Fatalf("status = %q, want failed", res.Status())
 	}
 	if msg, _ := res.Metadata()["error"].(string); !strings.Contains(msg, "bio") {
@@ -294,7 +294,7 @@ func TestEffortAndDefaults(t *testing.T) {
 	var s seen
 	srv := jsonServer(t, 200, message("ok", "end_turn", 1, 1, ""), &s)
 	g := NewChatGenerator("k", "m").WithBaseURL(srv.URL)
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: "q", Params: loom.GenerateParams{Extra: map[string]any{"effort": "high"}}}); err != nil {
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "q", Params: noewright.GenerateParams{Extra: map[string]any{"effort": "high"}}}); err != nil {
 		t.Fatal(err)
 	}
 	oc, _ := s.body["output_config"].(map[string]any)
@@ -304,7 +304,7 @@ func TestEffortAndDefaults(t *testing.T) {
 	if s.body["max_tokens"] != float64(defaultMaxTokens) {
 		t.Fatalf("max_tokens = %v, want %d", s.body["max_tokens"], defaultMaxTokens)
 	}
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: "q", Params: loom.GenerateParams{Extra: map[string]any{"effort": "extreme"}}}); err == nil {
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "q", Params: noewright.GenerateParams{Extra: map[string]any{"effort": "extreme"}}}); err == nil {
 		t.Fatal("invalid effort accepted")
 	}
 }
@@ -313,8 +313,8 @@ func TestNativeStructuredOutputs(t *testing.T) {
 	schema := map[string]any{"type": "object", "properties": map[string]any{"answer": map[string]any{"type": "integer"}}, "required": []any{"answer"}, "additionalProperties": false}
 	var s seen
 	srv := jsonServer(t, 200, message(`{"answer":42}`, "end_turn", 1, 1, ""), &s)
-	res, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL).WithNativeStructuredOutputs().Generate(context.Background(), loom.GenerateRequest{
-		SystemPrompt: "be helpful", UserPrompt: "q", ResponseFormat: &loom.ResponseFormat{Schema: schema},
+	res, err := NewChatGenerator("k", "m").WithBaseURL(srv.URL).WithNativeStructuredOutputs().Generate(context.Background(), noewright.GenerateRequest{
+		SystemPrompt: "be helpful", UserPrompt: "q", ResponseFormat: &noewright.ResponseFormat{Schema: schema},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -327,7 +327,7 @@ func TestNativeStructuredOutputs(t *testing.T) {
 	if systemText(s.body) != "be helpful" {
 		t.Fatalf("system = %q; native mode must not inject the prompt-steering text", systemText(s.body))
 	}
-	if sr, ok := res.(*loom.StructuredResult); !ok || sr.Data["answer"] != float64(42) {
+	if sr, ok := res.(*noewright.StructuredResult); !ok || sr.Data["answer"] != float64(42) {
 		t.Fatalf("result = %#v", res)
 	}
 }
@@ -357,13 +357,13 @@ func TestVerify(t *testing.T) {
 	if info.ContextWindow != 1000000 || info.MaxOutputTokens != 128000 || info.DisplayName != "Claude Opus 5.5" {
 		t.Fatalf("info %+v", info)
 	}
-	if _, err := g.Verify(context.Background(), map[string]any{"api_key": "user-key"}); !errors.Is(err, loom.ErrKeyRejected) {
+	if _, err := g.Verify(context.Background(), map[string]any{"api_key": "user-key"}); !errors.Is(err, noewright.ErrKeyRejected) {
 		t.Fatalf("bad override key: err = %v, want ErrKeyRejected", err)
 	}
 	if s.bearer != "user-key" {
 		t.Fatalf("override key not used: %q", s.bearer)
 	}
-	if _, err := g.Verify(context.Background(), map[string]any{"model": "nope"}); err == nil || errors.Is(err, loom.ErrKeyRejected) {
+	if _, err := g.Verify(context.Background(), map[string]any{"model": "nope"}); err == nil || errors.Is(err, noewright.ErrKeyRejected) {
 		t.Fatalf("unknown model: err = %v, want a not-found error", err)
 	}
 }

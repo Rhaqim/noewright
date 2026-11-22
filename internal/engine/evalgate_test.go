@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/rhaqim/loom/evaluator"
-	"github.com/rhaqim/loom/evaluator/stub"
+	"github.com/rhaqim/noewright/evaluator"
+	"github.com/rhaqim/noewright/evaluator/stub"
 )
 
 func evalSession(t *testing.T, e *Engine) *Session {

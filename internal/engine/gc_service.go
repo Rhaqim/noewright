@@ -5,7 +5,7 @@ package engine
 import (
 	"context"
 
-	loomgc "github.com/rhaqim/loom/gc"
+	loomgc "github.com/rhaqim/noewright/gc"
 )
 
 // BranchGCConfig is a re-export of gc.Config for callers who import only loom.

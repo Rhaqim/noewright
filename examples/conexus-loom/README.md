@@ -104,7 +104,7 @@ mean here. Questions are prompts, and prompts have always lived in `narrative/`.
 
 | Conexus monorepo | here | engine |
 |---|---|---|
-| `StoryOrchestrator.PlayTurn` | [engine/engine.go](engine/engine.go) | `loom.RunTurn` |
+| `StoryOrchestrator.PlayTurn` | [engine/engine.go](engine/engine.go) | `noewright.RunTurn` |
 | Author / Logician / Sensory `ai.Service` agents | [narrative/](narrative) agents + prompts | loom `Agent` + `Generator` |
 | embedded `const` system prompts | **files** in [narrative/prompts/](narrative/prompts) | loom versioned `Prompt` |
 | topic → world migration | [migration/](migration) | migrate agent via loom |
@@ -211,7 +211,7 @@ sensory `image.prompt` / `music.mood`), so either version runs offline or live.
 
 1. **Migration** (first run): the migrate agent turns `block.txt` into a `World` +
    `Constitution`, stored in the loom session.
-2. **PlayTurn** → `loom.RunTurn(Flow)`:
+2. **PlayTurn** → `noewright.RunTurn(Flow)`:
    - **pre-hook** recalls relevant facts from memory into the turn,
    - **Author** (lead) streams prose,
    - **Logician** + **Sensory** (followers) analyse it in parallel,
@@ -238,7 +238,7 @@ Recent loom additions, all wired here:
   `SchemaValidationPostHook` validates each agent's JSON against the schema stored
   on its prompt and auto-retries on violation. Off for the stub (its reduced
   output intentionally doesn't satisfy the full v2 schemas).
-- **Per-model pricing.** `loom.Config.Pricing` (see `adapters.OpenAIPricing`)
+- **Per-model pricing.** `noewright.Config.Pricing` (see `adapters.OpenAIPricing`)
   prices each step by the model the generator reports, so the spend report is
   accurate per model; unknown models fall back to the default.
 

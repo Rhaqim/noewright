@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 const defaultBaseURL = "https://api.dev.runwayml.com/v1"
@@ -35,9 +35,9 @@ func truncErr(b []byte) []byte {
 	return b
 }
 
-// VideoGenerator implements loom.Generator for RunwayML Gen-3 video models.
+// VideoGenerator implements noewright.Generator for RunwayML Gen-3 video models.
 // VideoGenerator is an async generator: Generate submits the job, Poll resolves it.
-var _ loom.AsyncGenerator = (*VideoGenerator)(nil)
+var _ noewright.AsyncGenerator = (*VideoGenerator)(nil)
 
 type VideoGenerator struct {
 	apiKey  string
@@ -56,10 +56,10 @@ func NewVideoGenerator(apiKey, model string) *VideoGenerator {
 	}
 }
 
-func (g *VideoGenerator) Modality() loom.Modality { return loom.ModalityVideo }
+func (g *VideoGenerator) Modality() noewright.Modality { return noewright.ModalityVideo }
 
 // Generate submits a video generation task to RunwayML and returns a PendingResult.
-func (g *VideoGenerator) Generate(ctx context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g *VideoGenerator) Generate(ctx context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	payload := map[string]any{
 		"model":      g.model,
 		"promptText": req.UserPrompt,
@@ -76,17 +76,17 @@ func (g *VideoGenerator) Generate(ctx context.Context, req loom.GenerateRequest)
 		return nil, err
 	}
 
-	handle := &loom.TaskHandle{
+	handle := &noewright.TaskHandle{
 		ID:       uuid.New(),
 		Provider: "runway",
 		Handle:   taskID,
 	}
-	return loom.NewPendingResult(loom.ModalityVideo, handle), nil
+	return noewright.NewPendingResult(noewright.ModalityVideo, handle), nil
 }
 
 // Poll checks the RunwayML task status and returns the final VideoResult once
 // the video is ready.
-func (g *VideoGenerator) Poll(ctx context.Context, handle loom.TaskHandle) (loom.Result, error) {
+func (g *VideoGenerator) Poll(ctx context.Context, handle noewright.TaskHandle) (noewright.Result, error) {
 	task, err := g.getTask(ctx, handle.Handle)
 	if err != nil {
 		return nil, err
@@ -97,12 +97,12 @@ func (g *VideoGenerator) Poll(ctx context.Context, handle loom.TaskHandle) (loom
 		if len(task.Output) == 0 {
 			return nil, fmt.Errorf("runway: no output URLs")
 		}
-		return loom.NewVideoResult(task.Output[0], "", 0, 0, 0), nil
+		return noewright.NewVideoResult(task.Output[0], "", 0, 0, 0), nil
 	case "FAILED":
 		return nil, fmt.Errorf("runway: task %s failed: %s", task.ID, task.Failure)
 	default:
 		// PENDING, RUNNING, THROTTLED
-		return loom.NewPendingResult(loom.ModalityVideo, &handle), nil
+		return noewright.NewPendingResult(noewright.ModalityVideo, &handle), nil
 	}
 }
 

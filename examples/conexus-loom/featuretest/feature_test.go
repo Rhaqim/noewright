@@ -7,27 +7,27 @@ import (
 	"testing"
 	"time"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/schema"
 	_ "modernc.org/sqlite"
 )
 
 // leadGen streams two words so the bus carries chunks on the "lead" topic.
 type leadGen struct{}
 
-func (leadGen) Modality() loom.Modality { return loom.ModalityText }
-func (leadGen) Generate(_ context.Context, _ loom.GenerateRequest) (loom.Result, error) {
-	return loom.NewTextResult("alpha beta", "stop", 1, 1), nil
+func (leadGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (leadGen) Generate(_ context.Context, _ noewright.GenerateRequest) (noewright.Result, error) {
+	return noewright.NewTextResult("alpha beta", "stop", 1, 1), nil
 }
-func (leadGen) GenerateStream(_ context.Context, _ loom.GenerateRequest) (<-chan loom.Chunk, <-chan loom.Result, error) {
-	chunks := make(chan loom.Chunk, 2)
-	results := make(chan loom.Result, 1)
+func (leadGen) GenerateStream(_ context.Context, _ noewright.GenerateRequest) (<-chan noewright.Chunk, <-chan noewright.Result, error) {
+	chunks := make(chan noewright.Chunk, 2)
+	results := make(chan noewright.Result, 1)
 	go func() {
 		defer close(chunks)
 		defer close(results)
-		chunks <- loom.Chunk{Content: "alpha"}
-		chunks <- loom.Chunk{Content: "beta"}
-		results <- loom.NewTextResult("alpha beta", "stop", 1, 1)
+		chunks <- noewright.Chunk{Content: "alpha"}
+		chunks <- noewright.Chunk{Content: "beta"}
+		results <- noewright.NewTextResult("alpha beta", "stop", 1, 1)
 	}()
 	return chunks, results, nil
 }
@@ -39,8 +39,8 @@ type followerGen struct {
 	tension *any
 }
 
-func (g followerGen) Modality() loom.Modality { return loom.ModalityText }
-func (g followerGen) Generate(_ context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g followerGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (g followerGen) Generate(_ context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	*g.temp = req.Params.Temperature
 	if req.ParamsMap != nil {
 		*g.tension = req.ParamsMap["tension"]
@@ -61,7 +61,7 @@ func (g followerGen) Generate(_ context.Context, req loom.GenerateRequest) (loom
 		}
 		*g.heard = strings.Join(parts, "|")
 	}
-	return loom.NewTextResult("ok", "stop", 1, 1), nil
+	return noewright.NewTextResult("ok", "stop", 1, 1), nil
 }
 
 func TestCrossAgentBusAndParamsMap(t *testing.T) {
@@ -75,9 +75,9 @@ func TestCrossAgentBusAndParamsMap(t *testing.T) {
 	var heard string
 	var temp float64
 	var tension any
-	e, err := loom.New(loom.Config{
-		DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{
+	e, err := noewright.New(noewright.Config{
+		DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{
 			"lead":     leadGen{},
 			"follower": followerGen{heard: &heard, temp: &temp, tension: &tension},
 		},
@@ -90,16 +90,16 @@ func TestCrossAgentBusAndParamsMap(t *testing.T) {
 	mustAgent(t, ctx, e, "author", "lead")
 	mustAgent(t, ctx, e, "critic", "follower")
 
-	sess := &loom.Session{PlatformID: "p", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "p", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
 
-	turn, err := e.RunTurn(ctx, sess, loom.TurnRequest{
-		Flow: loom.Flow{
+	turn, err := e.RunTurn(ctx, sess, noewright.TurnRequest{
+		Flow: noewright.Flow{
 			Slug:      "t",
-			Lead:      loom.FlowAgent{AgentSlug: "author", Stream: true},
-			Followers: []loom.FlowAgent{{AgentSlug: "critic"}},
+			Lead:      noewright.FlowAgent{AgentSlug: "author", Stream: true},
+			Followers: []noewright.FlowAgent{{AgentSlug: "critic"}},
 		},
 		// Params map carries a model knob (temperature) and a domain knob (tension).
 		Params: map[string]any{"temperature": 0.7, "tension": 0.6},
@@ -126,9 +126,9 @@ func TestCrossAgentBusAndParamsMap(t *testing.T) {
 	t.Logf("OK heard=%q temp=%v tension=%v messages=%d", heard, temp, tension, len(turn.Messages))
 }
 
-func mustAgent(t *testing.T, ctx context.Context, e *loom.Engine, slug, gen string) {
+func mustAgent(t *testing.T, ctx context.Context, e *noewright.Engine, slug, gen string) {
 	t.Helper()
-	if err := e.Agents().Create(ctx, &loom.Agent{Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: gen}); err != nil {
+	if err := e.Agents().Create(ctx, &noewright.Agent{Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: gen}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -136,9 +136,9 @@ func mustAgent(t *testing.T, ctx context.Context, e *loom.Engine, slug, gen stri
 // jsonGen returns a fixed JSON string as a TextResult.
 type jsonGen struct{ out string }
 
-func (jsonGen) Modality() loom.Modality { return loom.ModalityText }
-func (g jsonGen) Generate(_ context.Context, _ loom.GenerateRequest) (loom.Result, error) {
-	return loom.NewTextResult(g.out, "stop", 1, 1), nil
+func (jsonGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (g jsonGen) Generate(_ context.Context, _ noewright.GenerateRequest) (noewright.Result, error) {
+	return noewright.NewTextResult(g.out, "stop", 1, 1), nil
 }
 
 func TestSchemaValidationHook(t *testing.T) {
@@ -148,17 +148,17 @@ func TestSchemaValidationHook(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{
 			"bad":  jsonGen{out: `{"nope": true}`},        // missing required "status"
 			"good": jsonGen{out: `{"status": "ONGOING"}`}, // valid
 		}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	e.Hooks().RegisterPost("schema", loom.SchemaValidationPostHook())
+	e.Hooks().RegisterPost("schema", noewright.SchemaValidationPostHook())
 
-	rf := loom.MustResponseFormatJSON(`{
+	rf := noewright.MustResponseFormatJSON(`{
 		"type":"object",
 		"properties":{"status":{"type":"string","enum":["ONGOING","ENDED"]}},
 		"required":["status"],
@@ -166,24 +166,24 @@ func TestSchemaValidationHook(t *testing.T) {
 	}`, true)
 
 	mk := func(slug, gen string) {
-		if err := e.Agents().Create(ctx, &loom.Agent{Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: gen, ResponseFormat: rf}); err != nil {
+		if err := e.Agents().Create(ctx, &noewright.Agent{Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: gen, ResponseFormat: rf}); err != nil {
 			t.Fatal(err)
 		}
 	}
 	mk("a-bad", "bad")
 	mk("a-good", "good")
 
-	sess := &loom.Session{PlatformID: "p", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "p", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
 
 	// Invalid output: validated, retried, and (since it never fixes) fails.
-	if _, err := e.RunStep(ctx, sess, loom.StepRequest{AgentSlug: "a-bad", MaxRetries: 1}); err == nil || !strings.Contains(err.Error(), "schema") {
+	if _, err := e.RunStep(ctx, sess, noewright.StepRequest{AgentSlug: "a-bad", MaxRetries: 1}); err == nil || !strings.Contains(err.Error(), "schema") {
 		t.Fatalf("expected schema-validation failure, got %v", err)
 	}
 	// Valid output passes.
-	if _, err := e.RunStep(ctx, sess, loom.StepRequest{AgentSlug: "a-good"}); err != nil {
+	if _, err := e.RunStep(ctx, sess, noewright.StepRequest{AgentSlug: "a-good"}); err != nil {
 		t.Fatalf("valid output should pass: %v", err)
 	}
 }
@@ -195,9 +195,9 @@ func TestPerModelPricing(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{"g": jsonGen{out: "ok"}},
-		Pricing:    map[string]loom.ModelPrice{"gpt-4o-mini": {InputPer1M: 0.15, OutputPer1M: 0.60}},
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{"g": jsonGen{out: "ok"}},
+		Pricing:    map[string]noewright.ModelPrice{"gpt-4o-mini": {InputPer1M: 0.15, OutputPer1M: 0.60}},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -226,32 +226,32 @@ func TestSharedResponseFormatReference(t *testing.T) {
 		t.Fatal(err)
 	}
 	g := &recParamGen{}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{"g": g}})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{"g": g}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// One reusable response-format record.
-	rf := loom.MustResponseFormatJSON(`{"type":"object","properties":{"x":{"type":"string"}}}`, true)
-	rec := &loom.ResponseFormatRecord{Slug: "shared", Version: 1, Schema: rf.Schema, StrictMode: rf.StrictMode}
+	rf := noewright.MustResponseFormatJSON(`{"type":"object","properties":{"x":{"type":"string"}}}`, true)
+	rec := &noewright.ResponseFormatRecord{Slug: "shared", Version: 1, Schema: rf.Schema, StrictMode: rf.StrictMode}
 	if err := e.ResponseFormats().Create(ctx, rec); err != nil {
 		t.Fatal(err)
 	}
 	// Two agents (e.g. system-prompt v1 and v2) reference the SAME record.
 	for _, v := range []int{1, 2} {
 		id := rec.ID
-		if err := e.Agents().Create(ctx, &loom.Agent{Slug: "a", Version: v, Modal: loom.ModalityText, GeneratorSlug: "g", ResponseFormatID: &id}); err != nil {
+		if err := e.Agents().Create(ctx, &noewright.Agent{Slug: "a", Version: v, Modal: noewright.ModalityText, GeneratorSlug: "g", ResponseFormatID: &id}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	sess := &loom.Session{PlatformID: "p", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "p", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
 	// Both agent versions resolve the referenced schema into the request.
 	for _, v := range []int{1, 2} {
 		g.lastRF = nil
-		if _, err := e.RunStep(ctx, sess, loom.StepRequest{AgentSlug: "a", AgentVersion: v}); err != nil {
+		if _, err := e.RunStep(ctx, sess, noewright.StepRequest{AgentSlug: "a", AgentVersion: v}); err != nil {
 			t.Fatal(err)
 		}
 		if g.lastRF == nil || g.lastRF.Schema["type"] != "object" {
@@ -265,12 +265,12 @@ func TestSharedResponseFormatReference(t *testing.T) {
 	}
 }
 
-type recParamGen struct{ lastRF *loom.ResponseFormat }
+type recParamGen struct{ lastRF *noewright.ResponseFormat }
 
-func (g *recParamGen) Modality() loom.Modality { return loom.ModalityText }
-func (g *recParamGen) Generate(_ context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g *recParamGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (g *recParamGen) Generate(_ context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	g.lastRF = req.ResponseFormat
-	return loom.NewTextResult("ok", "stop", 1, 1), nil
+	return noewright.NewTextResult("ok", "stop", 1, 1), nil
 }
 
 func TestValidateJSONSchemaUnit(t *testing.T) {
@@ -282,10 +282,10 @@ func TestValidateJSONSchemaUnit(t *testing.T) {
 		},
 		"additionalProperties": false,
 	}
-	if errs := loom.ValidateJSONSchema(sch, map[string]any{"n": float64(3)}); len(errs) != 0 {
+	if errs := noewright.ValidateJSONSchema(sch, map[string]any{"n": float64(3)}); len(errs) != 0 {
 		t.Errorf("valid value rejected: %v", errs)
 	}
-	if errs := loom.ValidateJSONSchema(sch, map[string]any{"x": float64(1)}); len(errs) == 0 {
+	if errs := noewright.ValidateJSONSchema(sch, map[string]any{"x": float64(1)}); len(errs) == 0 {
 		t.Error("missing-required + unexpected-property not caught")
 	}
 }
@@ -298,13 +298,13 @@ func TestBusAccessibleFromHook(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{"g": jsonGen{out: "ok"}}})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{"g": jsonGen{out: "ok"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	// A post-hook publishes a QA verdict on the turn bus — bus-driven QA.
-	e.Hooks().RegisterPost("bus-qa", func(_ context.Context, req *loom.StepRequest, res loom.Result) (loom.Result, error) {
+	e.Hooks().RegisterPost("bus-qa", func(_ context.Context, req *noewright.StepRequest, res noewright.Result) (noewright.Result, error) {
 		if b := req.Bus(); b != nil {
 			b.Publish("qa", "qa.verdict", "looks good")
 		}
@@ -312,12 +312,12 @@ func TestBusAccessibleFromHook(t *testing.T) {
 	})
 	mustAgent(t, ctx, e, "lead", "g")
 	mustAgent(t, ctx, e, "f", "g")
-	sess := &loom.Session{PlatformID: "p", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "p", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.RunTurn(ctx, sess, loom.TurnRequest{Flow: loom.Flow{
-		Slug: "t", Lead: loom.FlowAgent{AgentSlug: "lead"}, Followers: []loom.FlowAgent{{AgentSlug: "f"}},
+	turn, err := e.RunTurn(ctx, sess, noewright.TurnRequest{Flow: noewright.Flow{
+		Slug: "t", Lead: noewright.FlowAgent{AgentSlug: "lead"}, Followers: []noewright.FlowAgent{{AgentSlug: "f"}},
 	}})
 	if err != nil {
 		t.Fatal(err)

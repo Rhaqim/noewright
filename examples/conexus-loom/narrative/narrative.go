@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/rhaqim/conexus-loom/domain"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // Flow builds the turn definition at a target prompt version: the Author streams
@@ -15,17 +15,17 @@ import (
 // (followers). Each agent's version is resolved independently to the highest
 // available version <= target, so you can iterate ONE prompt (e.g. drop
 // author-*.v2.txt) and run -v 2 while the others stay at v1.
-func Flow(versions map[string][]int, target int) loom.Flow {
-	return loom.Flow{
+func Flow(versions map[string][]int, target int) noewright.Flow {
+	return noewright.Flow{
 		Slug: fmt.Sprintf("story-turn-v%d", target),
 		// Per-agent params: the Author runs hot for creative prose; the JSON
 		// agents run cold for reliable structured output. Turn-wide params (e.g.
 		// tension) merge under these — see engine.PlayTurn.
-		Lead: loom.FlowAgent{AgentSlug: AgentAuthor, AgentVersion: ResolveVersion(versions, AgentAuthor, target), Stream: true, OutputKey: "Prose",
+		Lead: noewright.FlowAgent{AgentSlug: AgentAuthor, AgentVersion: ResolveVersion(versions, AgentAuthor, target), Stream: true, OutputKey: "Prose",
 			// 700 output tokens keeps a scene near the 350–500 word target even
 			// before the prose-length hook needs to correct an overlong draft.
 			Params: map[string]any{"temperature": 0.85, "max_tokens": 700}},
-		Followers: []loom.FlowAgent{
+		Followers: []noewright.FlowAgent{
 			{AgentSlug: AgentLogician, AgentVersion: ResolveVersion(versions, AgentLogician, target),
 				Params: map[string]any{"temperature": 0.2}},
 			{AgentSlug: AgentSensory, AgentVersion: ResolveVersion(versions, AgentSensory, target),
@@ -185,15 +185,15 @@ func ParseMigration(text string) (MigrationResult, error) {
 // response_format (a StructuredResult carrying parsed Data) or returned plain
 // text (a TextResult). This keeps parsing uniform across OpenAI-compatible
 // providers regardless of response_format support.
-func JSONOf(res loom.Result) string {
+func JSONOf(res noewright.Result) string {
 	switch r := res.(type) {
-	case *loom.StructuredResult:
+	case *noewright.StructuredResult:
 		b, _ := json.Marshal(r.Data)
 		return string(b)
-	case *loom.TextResult:
+	case *noewright.TextResult:
 		return r.Content
 	default:
-		return loom.ResultText(res)
+		return noewright.ResultText(res)
 	}
 }
 
@@ -218,19 +218,19 @@ func extractJSON(s string) string {
 // invalid JSON, wrong option count, or duplicate verb buckets all trigger a
 // retry, and the next attempt sees the reason on req.Annotations. Non-logician
 // agents pass through untouched.
-func QAHook() loom.PostHook {
-	return func(_ context.Context, req *loom.StepRequest, res loom.Result) (loom.Result, error) {
+func QAHook() noewright.PostHook {
+	return func(_ context.Context, req *noewright.StepRequest, res noewright.Result) (noewright.Result, error) {
 		if req.AgentSlug != AgentLogician {
 			return res, nil
 		}
 		out, err := ParseLogician(JSONOf(res))
 		if err != nil {
-			return nil, loom.ErrRetryWith(loom.RetryAnnotation{
+			return nil, noewright.ErrRetryWith(noewright.RetryAnnotation{
 				Reason: "your previous output was not valid JSON; return ONLY the JSON object",
 			})
 		}
 		if len(out.Options) != 3 {
-			return nil, loom.ErrRetryWith(loom.RetryAnnotation{
+			return nil, noewright.ErrRetryWith(noewright.RetryAnnotation{
 				Reason: fmt.Sprintf("return EXACTLY 3 options (you returned %d)", len(out.Options)),
 			})
 		}
@@ -245,7 +245,7 @@ func QAHook() loom.PostHook {
 			}
 		}
 		if len(dup) > 0 {
-			return nil, loom.ErrRetryWith(loom.RetryAnnotation{
+			return nil, noewright.ErrRetryWith(noewright.RetryAnnotation{
 				Reason:    fmt.Sprintf("two options share a verb bucket (%v); make each option start with a different strong verb", dup),
 				Forbidden: dup,
 			})

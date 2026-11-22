@@ -108,35 +108,35 @@ type EvalGateConfig struct {
 //
 // A typical registration — one call, three independent questions, one policy:
 //
-//	e.Hooks().RegisterPost("quality", e.EvalGate(loom.EvalGateConfig{
+//	e.Hooks().RegisterPost("quality", e.EvalGate(noewright.EvalGateConfig{
 //	    Agents: []string{"author"},
-//	    State: func(req *loom.StepRequest, res loom.Result) any {
+//	    State: func(req *noewright.StepRequest, res noewright.Result) any {
 //	        return map[string]any{
-//	            "draft":    loom.ResultText(res),
+//	            "draft":    noewright.ResultText(res),
 //	            "previous": req.Session.State.Vars["last_prose"],
 //	        }
 //	    },
-//	    Questions: func(*loom.StepRequest, loom.Result) map[string]loom.EvalQuestion {
-//	        return map[string]loom.EvalQuestion{
-//	            "cliched": loom.EvalNoul("Does `draft` lean on stock clichés?"),
-//	            "repeats": loom.EvalNoul("Does `draft` repeat the events of `previous` without advancing?"),
-//	            "quality": loom.EvalScore("Rate the prose in `draft`",
+//	    Questions: func(*noewright.StepRequest, noewright.Result) map[string]noewright.EvalQuestion {
+//	        return map[string]noewright.EvalQuestion{
+//	            "cliched": noewright.EvalNoul("Does `draft` lean on stock clichés?"),
+//	            "repeats": noewright.EvalNoul("Does `draft` repeat the events of `previous` without advancing?"),
+//	            "quality": noewright.EvalScore("Rate the prose in `draft`",
 //	                "generic filler", "competent but flat", "vivid and specific", "genuinely striking"),
 //	        }
 //	    },
-//	    Decide: func(a loom.EvalAnswers) loom.EvalDecision {
+//	    Decide: func(a noewright.EvalAnswers) noewright.EvalDecision {
 //	        switch {
 //	        case a.Yes("repeats", 0.7):
-//	            return loom.EvalDecision{Verdict: loom.EvalRetry,
+//	            return noewright.EvalDecision{Verdict: noewright.EvalRetry,
 //	                Reason: "this scene repeats the previous one; advance the story"}
 //	        case a.Yes("cliched", 0.7):
-//	            return loom.EvalDecision{Verdict: loom.EvalRetry,
+//	            return noewright.EvalDecision{Verdict: noewright.EvalRetry,
 //	                Reason: "rewrite without stock clichés"}
 //	        case a.Score("quality") < 1:
-//	            return loom.EvalDecision{Verdict: loom.EvalRetry,
+//	            return noewright.EvalDecision{Verdict: noewright.EvalRetry,
 //	                Reason: "the prose is flat; be specific and concrete"}
 //	        }
-//	        return loom.EvalDecision{Verdict: loom.EvalAccept}
+//	        return noewright.EvalDecision{Verdict: noewright.EvalAccept}
 //	    },
 //	}))
 //

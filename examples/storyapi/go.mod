@@ -5,8 +5,8 @@ go 1.26.0
 require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
-	github.com/rhaqim/loom v0.0.3
-	github.com/rhaqim/loom/generator/anthropic v0.0.0
+	github.com/rhaqim/noewright v0.0.3
+	github.com/rhaqim/noewright/generator/anthropic v0.0.0
 	golang.org/x/crypto v0.40.0
 )
 
@@ -33,6 +33,6 @@ require (
 	golang.org/x/sync v0.25.0 // indirect
 )
 
-replace github.com/rhaqim/loom => ../..
+replace github.com/rhaqim/noewright => ../..
 
-replace github.com/rhaqim/loom/generator/anthropic => ../../generator/anthropic
+replace github.com/rhaqim/noewright/generator/anthropic => ../../generator/anthropic

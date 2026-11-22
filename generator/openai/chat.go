@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 const defaultBaseURL = "https://api.openai.com/v1"
@@ -28,7 +28,7 @@ const (
 	maxErrorBodyBytes = 4 << 10 // 4 KiB
 )
 
-// ChatGenerator implements loom.Generator and loom.StreamingGenerator for
+// ChatGenerator implements noewright.Generator and noewright.StreamingGenerator for
 // OpenAI chat-completion models (gpt-4o, gpt-4o-mini, o1, etc.).
 type ChatGenerator struct {
 	apiKey  string
@@ -95,7 +95,7 @@ func (g *ChatGenerator) baseURLAllowed(v string) bool {
 // baseURLAllowed; otherwise withOverrides returns an error rather than fall back
 // to the default endpoint (fail-closed). The shallow copy shares the
 // (concurrency-safe) http.Client.
-func (g *ChatGenerator) withOverrides(req loom.GenerateRequest) (*ChatGenerator, error) {
+func (g *ChatGenerator) withOverrides(req noewright.GenerateRequest) (*ChatGenerator, error) {
 	if len(req.Overrides) == 0 {
 		return g, nil
 	}
@@ -115,10 +115,10 @@ func (g *ChatGenerator) withOverrides(req loom.GenerateRequest) (*ChatGenerator,
 	return &cp, nil
 }
 
-func (g *ChatGenerator) Modality() loom.Modality { return loom.ModalityText }
+func (g *ChatGenerator) Modality() noewright.Modality { return noewright.ModalityText }
 
 // Generate calls the OpenAI Chat Completions API synchronously.
-func (g *ChatGenerator) Generate(ctx context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g *ChatGenerator) Generate(ctx context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	g, err := g.withOverrides(req)
 	if err != nil {
 		return nil, err
@@ -136,7 +136,7 @@ func (g *ChatGenerator) Generate(ctx context.Context, req loom.GenerateRequest) 
 
 // GenerateStream calls the OpenAI streaming API and delivers chunks on the
 // first returned channel; the fully assembled Result arrives on the second.
-func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateRequest) (<-chan loom.Chunk, <-chan loom.Result, error) {
+func (g *ChatGenerator) GenerateStream(ctx context.Context, req noewright.GenerateRequest) (<-chan noewright.Chunk, <-chan noewright.Result, error) {
 	g, err := g.withOverrides(req)
 	if err != nil {
 		return nil, nil, err
@@ -146,8 +146,8 @@ func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateReq
 		return nil, nil, err
 	}
 
-	chunks := make(chan loom.Chunk, 64)
-	results := make(chan loom.Result, 1)
+	chunks := make(chan noewright.Chunk, 64)
+	results := make(chan noewright.Result, 1)
 
 	go func() {
 		defer close(chunks)
@@ -203,7 +203,7 @@ func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateReq
 				}
 				if text := event.Choices[0].Delta.Content; text != "" {
 					assembled.WriteString(text)
-					chunks <- loom.Chunk{Content: text}
+					chunks <- noewright.Chunk{Content: text}
 				}
 			}
 		}
@@ -211,7 +211,7 @@ func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateReq
 			results <- newFailedResult(err)
 			return
 		}
-		tr := loom.NewTextResult(assembled.String(), finish, inTok, outTok)
+		tr := noewright.NewTextResult(assembled.String(), finish, inTok, outTok)
 		tr.Metadata()["model"] = g.model
 		results <- tr
 	}()
@@ -261,7 +261,7 @@ type chatResponse struct {
 	} `json:"usage"`
 }
 
-func (g *ChatGenerator) buildBody(req loom.GenerateRequest, stream bool) ([]byte, error) {
+func (g *ChatGenerator) buildBody(req noewright.GenerateRequest, stream bool) ([]byte, error) {
 	var msgs []chatMessage
 	if req.SystemPrompt != "" {
 		msgs = append(msgs, chatMessage{Role: "system", Content: req.SystemPrompt})
@@ -299,7 +299,7 @@ func (g *ChatGenerator) buildBody(req loom.GenerateRequest, stream bool) ([]byte
 	return json.Marshal(cr)
 }
 
-func (g *ChatGenerator) parseResponse(body []byte, req loom.GenerateRequest) (loom.Result, error) {
+func (g *ChatGenerator) parseResponse(body []byte, req noewright.GenerateRequest) (noewright.Result, error) {
 	var cr chatResponse
 	if err := json.Unmarshal(body, &cr); err != nil {
 		return nil, fmt.Errorf("openai: parse response: %w", err)
@@ -314,12 +314,12 @@ func (g *ChatGenerator) parseResponse(body []byte, req loom.GenerateRequest) (lo
 	if req.ResponseFormat != nil {
 		var data map[string]any
 		if err := json.Unmarshal([]byte(content), &data); err == nil {
-			sr := loom.NewStructuredResult(data, in, out)
+			sr := noewright.NewStructuredResult(data, in, out)
 			sr.Metadata()["model"] = g.model
 			return sr, nil
 		}
 	}
-	tr := loom.NewTextResult(content, finish, in, out)
+	tr := noewright.NewTextResult(content, finish, in, out)
 	tr.Metadata()["model"] = g.model
 	return tr, nil
 }
@@ -354,45 +354,45 @@ func (g *ChatGenerator) postStream(ctx context.Context, path string, body []byte
 }
 
 // newFailedResult returns a minimal failed result for goroutine error propagation.
-func newFailedResult(err error) loom.Result {
-	return loom.NewFailedResult(loom.ModalityText, err)
+func newFailedResult(err error) noewright.Result {
+	return noewright.NewFailedResult(noewright.ModalityText, err)
 }
 
-var _ loom.Verifier = (*ChatGenerator)(nil)
+var _ noewright.Verifier = (*ChatGenerator)(nil)
 
 // Verify checks the API key and model against the provider's models endpoint
 // (GET /models/{model}), honouring "api_key", "model" and "base_url"
 // overrides. It generates nothing and spends no tokens. A 401/403 wraps
-// loom.ErrKeyRejected; a 404 means the key works but the model does not exist.
-func (g *ChatGenerator) Verify(ctx context.Context, overrides map[string]any) (loom.ModelInfo, error) {
-	g, err := g.withOverrides(loom.GenerateRequest{Overrides: overrides})
+// noewright.ErrKeyRejected; a 404 means the key works but the model does not exist.
+func (g *ChatGenerator) Verify(ctx context.Context, overrides map[string]any) (noewright.ModelInfo, error) {
+	g, err := g.withOverrides(noewright.GenerateRequest{Overrides: overrides})
 	if err != nil {
-		return loom.ModelInfo{}, err
+		return noewright.ModelInfo{}, err
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, g.baseURL+"/models/"+url.PathEscape(g.model), nil)
 	if err != nil {
-		return loom.ModelInfo{}, err
+		return noewright.ModelInfo{}, err
 	}
 	req.Header.Set("Authorization", "Bearer "+g.apiKey)
 	resp, err := g.client.Do(req)
 	if err != nil {
-		return loom.ModelInfo{}, fmt.Errorf("openai: http: %w", err)
+		return noewright.ModelInfo{}, fmt.Errorf("openai: http: %w", err)
 	}
 	defer resp.Body.Close()
 	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
 	switch {
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		return loom.ModelInfo{}, fmt.Errorf("%w (openai http %d): %s", loom.ErrKeyRejected, resp.StatusCode, b)
+		return noewright.ModelInfo{}, fmt.Errorf("%w (openai http %d): %s", noewright.ErrKeyRejected, resp.StatusCode, b)
 	case resp.StatusCode == http.StatusNotFound:
-		return loom.ModelInfo{}, fmt.Errorf("openai: model %q not found for this key", g.model)
+		return noewright.ModelInfo{}, fmt.Errorf("openai: model %q not found for this key", g.model)
 	case resp.StatusCode >= 400:
-		return loom.ModelInfo{}, fmt.Errorf("openai: http %d: %s", resp.StatusCode, b)
+		return noewright.ModelInfo{}, fmt.Errorf("openai: http %d: %s", resp.StatusCode, b)
 	}
 	var m struct {
 		ID string `json:"id"`
 	}
 	if err := json.Unmarshal(b, &m); err != nil {
-		return loom.ModelInfo{}, fmt.Errorf("openai: parse model: %w", err)
+		return noewright.ModelInfo{}, fmt.Errorf("openai: parse model: %w", err)
 	}
-	return loom.ModelInfo{ID: m.ID}, nil
+	return noewright.ModelInfo{ID: m.ID}, nil
 }

@@ -16,8 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/generator/echo"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/generator/echo"
 )
 
 // slug keeps each run independent — the Postgres database is shared and
@@ -32,9 +32,9 @@ func TestTenantIsolation_Postgres(t *testing.T) {
 
 	slug := tenantSlug("narrator")
 	for _, owner := range []string{"tenant-a", "tenant-b"} {
-		if err := e.Agents().Create(ctx, &loom.Agent{
+		if err := e.Agents().Create(ctx, &noewright.Agent{
 			Slug: slug, Version: 1, Owner: owner,
-			Modal: loom.ModalityText, GeneratorSlug: "echo",
+			Modal: noewright.ModalityText, GeneratorSlug: "echo",
 			Category: owner + "-cat",
 		}); err != nil {
 			// Two owners sharing a slug is only possible with the widened
@@ -55,10 +55,10 @@ func TestTenantIsolation_Postgres(t *testing.T) {
 	}
 
 	// A third tenant sees nothing, and does not fall through to the global scope.
-	if _, err := e.Agents().Get(ctx, "tenant-c", slug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Agents().Get(ctx, "tenant-c", slug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("Get as tenant-c: err = %v, want ErrNotFound", err)
 	}
-	if _, err := e.Agents().Get(ctx, "", slug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Agents().Get(ctx, "", slug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("Get as global scope: err = %v, want ErrNotFound", err)
 	}
 
@@ -90,25 +90,25 @@ func TestTenantIsolation_StepExecution_Postgres(t *testing.T) {
 	e := newTestEngine(t)
 
 	slug := tenantSlug("author")
-	if err := e.Agents().Create(ctx, &loom.Agent{
+	if err := e.Agents().Create(ctx, &noewright.Agent{
 		Slug: slug, Version: 1, Owner: "tenant-a",
-		Modal: loom.ModalityText, GeneratorSlug: "echo",
+		Modal: noewright.ModalityText, GeneratorSlug: "echo",
 	}); err != nil {
 		t.Fatal(err)
 	}
 
-	sess := &loom.Session{PlatformID: "p"}
+	sess := &noewright.Session{PlatformID: "p"}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, err := e.RunStep(ctx, sess, loom.StepRequest{Owner: "tenant-a", AgentSlug: slug}); err != nil {
+	if _, err := e.RunStep(ctx, sess, noewright.StepRequest{Owner: "tenant-a", AgentSlug: slug}); err != nil {
 		t.Fatalf("tenant-a running its own agent: %v", err)
 	}
-	if _, err := e.RunStep(ctx, sess, loom.StepRequest{Owner: "tenant-b", AgentSlug: slug}); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.RunStep(ctx, sess, noewright.StepRequest{Owner: "tenant-b", AgentSlug: slug}); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("tenant-b executing tenant-a's agent: err = %v, want ErrNotFound", err)
 	}
-	if _, err := e.RunStep(ctx, sess, loom.StepRequest{AgentSlug: slug}); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.RunStep(ctx, sess, noewright.StepRequest{AgentSlug: slug}); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("global scope executing an owned agent: err = %v, want ErrNotFound", err)
 	}
 }
@@ -121,9 +121,9 @@ func TestTenantIsolation_Prompts_Postgres(t *testing.T) {
 
 	slug := tenantSlug("sys")
 	for _, owner := range []string{"tenant-a", "tenant-b"} {
-		if err := e.Prompts().Create(ctx, &loom.Prompt{
+		if err := e.Prompts().Create(ctx, &noewright.Prompt{
 			Slug: slug, Version: 1, Owner: owner,
-			Kind: loom.PromptKindSystem, Body: owner + " body",
+			Kind: noewright.PromptKindSystem, Body: owner + " body",
 		}); err != nil {
 			t.Fatalf("create prompt for %s: %v", owner, err)
 		}
@@ -135,7 +135,7 @@ func TestTenantIsolation_Prompts_Postgres(t *testing.T) {
 	if got.Body != "tenant-b body" {
 		t.Fatalf("Get as tenant-b returned %q — cross-tenant read", got.Body)
 	}
-	if _, err := e.Prompts().Get(ctx, "tenant-c", slug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Prompts().Get(ctx, "tenant-c", slug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("Get as tenant-c: err = %v, want ErrNotFound", err)
 	}
 }
@@ -148,21 +148,21 @@ func TestTenantIsolation_Prompts_Postgres(t *testing.T) {
 func TestCostSavepointIsolation_Postgres(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
-	e, err := loom.New(loom.Config{
-		DB: db, Dialect: loom.DialectPostgres,
-		Generators: map[string]loom.Generator{"echo": echo.New("[test]")},
+	e, err := noewright.New(noewright.Config{
+		DB: db, Dialect: noewright.DialectPostgres,
+		Generators: map[string]noewright.Generator{"echo": echo.New("[test]")},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	slug := tenantSlug("cost-sp")
-	if err := e.Agents().Create(ctx, &loom.Agent{
-		Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "echo",
+	if err := e.Agents().Create(ctx, &noewright.Agent{
+		Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sess := &loom.Session{PlatformID: "p"}
+	sess := &noewright.Session{PlatformID: "p"}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestCostSavepointIsolation_Postgres(t *testing.T) {
 			`ALTER TABLE loom_cost_records DROP CONSTRAINT IF EXISTS loom_cost_reject`)
 	})
 
-	step, err := e.RunStep(ctx, sess, loom.StepRequest{AgentSlug: slug})
+	step, err := e.RunStep(ctx, sess, noewright.StepRequest{AgentSlug: slug})
 	if err != nil {
 		t.Fatalf("a cost-write failure discarded the step on Postgres: %v", err)
 	}
@@ -202,7 +202,7 @@ func TestCostSavepointIsolation_Postgres(t *testing.T) {
 		`ALTER TABLE loom_cost_records DROP CONSTRAINT loom_cost_reject`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.RunStep(ctx, sess, loom.StepRequest{AgentSlug: slug}); err != nil {
+	if _, err := e.RunStep(ctx, sess, noewright.StepRequest{AgentSlug: slug}); err != nil {
 		t.Fatal(err)
 	}
 	usage, err := e.Cost().ByStep(ctx, sess.ID)
@@ -223,28 +223,28 @@ func TestLineage_Postgres(t *testing.T) {
 	e := newTestEngine(t)
 
 	slug := tenantSlug("lineage")
-	if err := e.Agents().Create(ctx, &loom.Agent{
-		Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "echo",
+	if err := e.Agents().Create(ctx, &noewright.Agent{
+		Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	// A 5-turn playthrough: one session per turn, each forked from the last.
-	root := &loom.Session{PlatformID: "p"}
+	root := &noewright.Session{PlatformID: "p"}
 	if err := e.Sessions().Create(ctx, root); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.RunStep(ctx, root, loom.StepRequest{AgentSlug: slug}); err != nil {
+	if _, err := e.RunStep(ctx, root, noewright.StepRequest{AgentSlug: slug}); err != nil {
 		t.Fatal(err)
 	}
-	chain := []*loom.Session{root}
+	chain := []*noewright.Session{root}
 	cur := root
 	for range 4 {
 		b, err := e.Sessions().Fork(ctx, cur.ID, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := e.RunStep(ctx, b, loom.StepRequest{AgentSlug: slug}); err != nil {
+		if _, err := e.RunStep(ctx, b, noewright.StepRequest{AgentSlug: slug}); err != nil {
 			t.Fatal(err)
 		}
 		chain = append(chain, b)
@@ -277,8 +277,8 @@ func TestLineage_Postgres(t *testing.T) {
 	if tree.StepCount != 1 {
 		t.Fatalf("root StepCount = %d, want 1", tree.StepCount)
 	}
-	var count func(*loom.BranchNode) int
-	count = func(n *loom.BranchNode) int {
+	var count func(*noewright.BranchNode) int
+	count = func(n *noewright.BranchNode) int {
 		total := 1
 		for _, c := range n.Children {
 			total += count(c)
@@ -300,12 +300,12 @@ func TestHeaderResumeStepIndex_Postgres(t *testing.T) {
 	e := newTestEngine(t)
 
 	slug := tenantSlug("resume")
-	if err := e.Agents().Create(ctx, &loom.Agent{
-		Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "echo",
+	if err := e.Agents().Create(ctx, &noewright.Agent{
+		Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 	}); err != nil {
 		t.Fatal(err)
 	}
-	sess := &loom.Session{PlatformID: "p"}
+	sess := &noewright.Session{PlatformID: "p"}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
@@ -319,7 +319,7 @@ func TestHeaderResumeStepIndex_Postgres(t *testing.T) {
 		if h.History != nil {
 			t.Fatal("GetHeader loaded History; the premise of this test is gone")
 		}
-		step, err := e.RunStep(ctx, h, loom.StepRequest{AgentSlug: slug})
+		step, err := e.RunStep(ctx, h, noewright.StepRequest{AgentSlug: slug})
 		if err != nil {
 			t.Fatalf("turn %d resuming from a header: %v", turn, err)
 		}
@@ -353,10 +353,10 @@ func TestLatestCache_Postgres(t *testing.T) {
 	}
 	ctx := context.Background()
 	db := openTestDB(t)
-	e, err := loom.New(loom.Config{
-		DB: db, Dialect: loom.DialectPostgres,
-		Generators:     map[string]loom.Generator{"echo": echo.New("[test]")},
-		Cache:          loom.NewInProcessCache(),
+	e, err := noewright.New(noewright.Config{
+		DB: db, Dialect: noewright.DialectPostgres,
+		Generators:     map[string]noewright.Generator{"echo": echo.New("[test]")},
+		Cache:          noewright.NewInProcessCache(),
 		LatestCacheTTL: time.Minute,
 	})
 	if err != nil {
@@ -364,8 +364,8 @@ func TestLatestCache_Postgres(t *testing.T) {
 	}
 
 	slug := tenantSlug("lc")
-	if err := e.Agents().Create(ctx, &loom.Agent{
-		Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "echo",
+	if err := e.Agents().Create(ctx, &noewright.Agent{
+		Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -382,8 +382,8 @@ func TestLatestCache_Postgres(t *testing.T) {
 		t.Fatalf("Latest after out-of-band insert = v%d, want cached v1", got.Version)
 	}
 	// Create v3 through the service evicts; the pointer advances.
-	if err := e.Agents().Create(ctx, &loom.Agent{
-		Slug: slug, Version: 3, Modal: loom.ModalityText, GeneratorSlug: "echo",
+	if err := e.Agents().Create(ctx, &noewright.Agent{
+		Slug: slug, Version: 3, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestLatestCache_Postgres(t *testing.T) {
 	}
 
 	// Owner isolation: a different owner must not resolve via the cached entry.
-	if _, err := e.Agents().Latest(ctx, "other", slug); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Agents().Latest(ctx, "other", slug); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("Latest(other) = %v, want ErrNotFound (cache not owner-scoped)", err)
 	}
 }
@@ -409,13 +409,13 @@ func TestFlowValidate_Postgres(t *testing.T) {
 
 	// Follower consumes the lead's output; lead consumes an external input.
 	mkAgent := func(slug string, vars []string) {
-		ut := &loom.Prompt{Slug: slug + "-ut", Version: 1, Kind: loom.PromptKindUserTemplate,
+		ut := &noewright.Prompt{Slug: slug + "-ut", Version: 1, Kind: noewright.PromptKindUserTemplate,
 			Body: "x", Variables: vars}
 		if err := e.Prompts().Create(ctx, ut); err != nil {
 			t.Fatal(err)
 		}
-		if err := e.Agents().Create(ctx, &loom.Agent{
-			Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "echo",
+		if err := e.Agents().Create(ctx, &noewright.Agent{
+			Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 			UserTemplateID: ut.ID,
 		}); err != nil {
 			t.Fatal(err)
@@ -424,10 +424,10 @@ func TestFlowValidate_Postgres(t *testing.T) {
 	mkAgent(leadSlug, []string{"topic"})
 	mkAgent(folSlug, []string{"Lead"})
 
-	rec := &loom.FlowRecord{
+	rec := &noewright.FlowRecord{
 		Slug: tenantSlug("flow"), Version: 1, IsActive: true,
 		Inputs: []string{"topic"},
-		Agents: []loom.FlowAgentEntry{
+		Agents: []noewright.FlowAgentEntry{
 			{AgentSlug: leadSlug, OutputKey: "Lead"},
 			{AgentSlug: folSlug, OutputKey: "Fol"},
 		},
@@ -448,11 +448,11 @@ func TestFlowValidate_Postgres(t *testing.T) {
 	}
 
 	// A dangling consumed variable is rejected.
-	bad := &loom.FlowRecord{
+	bad := &noewright.FlowRecord{
 		Slug: tenantSlug("bad"), Version: 1, IsActive: true,
-		Agents: []loom.FlowAgentEntry{{AgentSlug: leadSlug, OutputKey: "Lead"}},
+		Agents: []noewright.FlowAgentEntry{{AgentSlug: leadSlug, OutputKey: "Lead"}},
 	}
-	if err := e.Flows().Validate(ctx, bad); !errors.Is(err, loom.ErrFlowInvalid) {
+	if err := e.Flows().Validate(ctx, bad); !errors.Is(err, noewright.ErrFlowInvalid) {
 		t.Fatalf("dangling variable on Postgres: err = %v, want ErrFlowInvalid", err)
 	}
 }
@@ -463,9 +463,9 @@ func TestLayeredExecution_Postgres(t *testing.T) {
 	ctx := context.Background()
 	db := openTestDB(t)
 	// No-prefix echo so an agent's output is exactly its rendered template.
-	e, err := loom.New(loom.Config{
-		DB: db, Dialect: loom.DialectPostgres,
-		Generators: map[string]loom.Generator{"echo": echo.New("")},
+	e, err := noewright.New(noewright.Config{
+		DB: db, Dialect: noewright.DialectPostgres,
+		Generators: map[string]noewright.Generator{"echo": echo.New("")},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -475,13 +475,13 @@ func TestLayeredExecution_Postgres(t *testing.T) {
 	f1S := tenantSlug("f1")
 	f2S := tenantSlug("f2")
 	mk := func(slug, body string, vars []string) {
-		ut := &loom.Prompt{Slug: slug + "-ut", Version: 1, Kind: loom.PromptKindUserTemplate,
+		ut := &noewright.Prompt{Slug: slug + "-ut", Version: 1, Kind: noewright.PromptKindUserTemplate,
 			Body: body, Variables: vars}
 		if err := e.Prompts().Create(ctx, ut); err != nil {
 			t.Fatal(err)
 		}
-		if err := e.Agents().Create(ctx, &loom.Agent{
-			Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "echo",
+		if err := e.Agents().Create(ctx, &noewright.Agent{
+			Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 			UserTemplateID: ut.ID,
 		}); err != nil {
 			t.Fatal(err)
@@ -491,26 +491,26 @@ func TestLayeredExecution_Postgres(t *testing.T) {
 	mk(f1S, "F1OUT", nil)
 	mk(f2S, "{{.Inputs.F1}}", []string{"F1"}) // consumes f1's output
 
-	sess := &loom.Session{PlatformID: "p"}
+	sess := &noewright.Session{PlatformID: "p"}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
-	flow := loom.Flow{
+	flow := noewright.Flow{
 		Slug: "t",
-		Lead: loom.FlowAgent{AgentSlug: leadS, OutputKey: "Lead"},
-		Followers: []loom.FlowAgent{
+		Lead: noewright.FlowAgent{AgentSlug: leadS, OutputKey: "Lead"},
+		Followers: []noewright.FlowAgent{
 			{AgentSlug: f1S, OutputKey: "F1"},
 			{AgentSlug: f2S, OutputKey: "F2"},
 		},
 	}
-	turn, err := e.RunTurn(ctx, sess, loom.TurnRequest{Flow: flow})
+	turn, err := e.RunTurn(ctx, sess, noewright.TurnRequest{Flow: flow})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if ferr := turn.Errors[f2S]; ferr != nil {
 		t.Fatalf("f2 errored — it did not run after f1 on Postgres: %v", ferr)
 	}
-	if got := loom.ResultText(turn.Followers[f2S].Result); got != "F1OUT" {
+	if got := noewright.ResultText(turn.Followers[f2S].Result); got != "F1OUT" {
 		t.Fatalf("f2 output = %q, want %q (did not receive f1's output)", got, "F1OUT")
 	}
 }
@@ -522,13 +522,13 @@ func TestFlowPlan_Postgres(t *testing.T) {
 	e := newTestEngine(t)
 
 	mk := func(slug string, vars []string) {
-		ut := &loom.Prompt{Slug: slug + "-ut", Version: 1, Kind: loom.PromptKindUserTemplate,
+		ut := &noewright.Prompt{Slug: slug + "-ut", Version: 1, Kind: noewright.PromptKindUserTemplate,
 			Body: "x", Variables: vars}
 		if err := e.Prompts().Create(ctx, ut); err != nil {
 			t.Fatal(err)
 		}
-		if err := e.Agents().Create(ctx, &loom.Agent{
-			Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "echo",
+		if err := e.Agents().Create(ctx, &noewright.Agent{
+			Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "echo",
 			UserTemplateID: ut.ID,
 		}); err != nil {
 			t.Fatal(err)
@@ -539,10 +539,10 @@ func TestFlowPlan_Postgres(t *testing.T) {
 	mk(f1S, []string{"Lead"})
 	mk(f2S, []string{"F1"})
 
-	rec := &loom.FlowRecord{
+	rec := &noewright.FlowRecord{
 		Slug: tenantSlug("flow"), Version: 1, IsActive: true,
 		Inputs: []string{"topic"},
-		Agents: []loom.FlowAgentEntry{
+		Agents: []noewright.FlowAgentEntry{
 			{AgentSlug: leadS, OutputKey: "Lead"},
 			{AgentSlug: f1S, OutputKey: "F1"},
 			{AgentSlug: f2S, OutputKey: "F2"},
@@ -557,13 +557,13 @@ func TestFlowPlan_Postgres(t *testing.T) {
 	}
 	var f1Lead, f2F1 bool
 	for _, ed := range plan.Edges {
-		if ed.To == f1S && ed.Var == "Lead" && ed.Source == loom.FlowEdgeAgent && ed.From == leadS {
+		if ed.To == f1S && ed.Var == "Lead" && ed.Source == noewright.FlowEdgeAgent && ed.From == leadS {
 			f1Lead = true
 		}
-		if ed.To == f2S && ed.Var == "F1" && ed.Source == loom.FlowEdgeAgent && ed.From == f1S {
+		if ed.To == f2S && ed.Var == "F1" && ed.Source == noewright.FlowEdgeAgent && ed.From == f1S {
 			f2F1 = true
 		}
-		if ed.Source == loom.FlowEdgeUnresolved {
+		if ed.Source == noewright.FlowEdgeUnresolved {
 			t.Fatalf("unexpected unresolved edge: %+v", ed)
 		}
 	}

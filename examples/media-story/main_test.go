@@ -13,25 +13,25 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/schema"
 )
 
 // fakeMeshy is a two-stage async 3D generator whose adapter Provider ("meshy")
 // differs from the slug it is registered under ("meshy-3d"), like the real one.
 type fakeMeshy struct{ refineStarts *atomic.Int32 }
 
-func (fakeMeshy) Modality() loom.Modality { return loom.ModalityModel3D }
-func (fakeMeshy) Generate(context.Context, loom.GenerateRequest) (loom.Result, error) {
-	return loom.NewPendingResult(loom.ModalityModel3D, &loom.TaskHandle{ID: uuid.New(), Provider: "meshy", Handle: "text:p"}), nil
+func (fakeMeshy) Modality() noewright.Modality { return noewright.ModalityModel3D }
+func (fakeMeshy) Generate(context.Context, noewright.GenerateRequest) (noewright.Result, error) {
+	return noewright.NewPendingResult(noewright.ModalityModel3D, &noewright.TaskHandle{ID: uuid.New(), Provider: "meshy", Handle: "text:p"}), nil
 }
-func (f fakeMeshy) Poll(_ context.Context, h loom.TaskHandle) (loom.Result, error) {
+func (f fakeMeshy) Poll(_ context.Context, h noewright.TaskHandle) (noewright.Result, error) {
 	if h.Handle == "text:p" {
 		f.refineStarts.Add(1)
 		h.Handle = "refine:r"
-		return loom.NewPendingResult(loom.ModalityModel3D, &h), nil
+		return noewright.NewPendingResult(noewright.ModalityModel3D, &h), nil
 	}
-	return loom.NewModel3DResult("https://cdn.example/helm.glb", "model/gltf-binary", "https://cdn.example/helm.png", "helm", 0, false), nil
+	return noewright.NewModel3DResult("https://cdn.example/helm.glb", "model/gltf-binary", "https://cdn.example/helm.png", "helm", 0, false), nil
 }
 
 func testDB(t *testing.T) *sql.DB {
@@ -50,17 +50,17 @@ func testDB(t *testing.T) *sql.DB {
 
 func testApp(t *testing.T, db *sql.DB, starts *atomic.Int32) *app {
 	t.Helper()
-	gens := map[string]loom.Generator{
-		"local-narrator": localGenerator{modality: loom.ModalityText},
-		"local-image":    localGenerator{modality: loom.ModalityImage},
-		"local-audio":    localGenerator{modality: loom.ModalityAudio},
-		"local-video":    localGenerator{modality: loom.ModalityVideo},
-		"local-model3d":  localGenerator{modality: loom.ModalityModel3D},
-		"local-world":    localGenerator{modality: loom.ModalityWorld},
+	gens := map[string]noewright.Generator{
+		"local-narrator": localGenerator{modality: noewright.ModalityText},
+		"local-image":    localGenerator{modality: noewright.ModalityImage},
+		"local-audio":    localGenerator{modality: noewright.ModalityAudio},
+		"local-video":    localGenerator{modality: noewright.ModalityVideo},
+		"local-model3d":  localGenerator{modality: noewright.ModalityModel3D},
+		"local-world":    localGenerator{modality: noewright.ModalityWorld},
 		"meshy-3d":       fakeMeshy{starts},
 	}
 	a, err := newApp(context.Background(), db, gens, defaultAgents(true),
-		loom.PollerConfig{Interval: 20 * time.Millisecond, Workers: 1, MaxAttempts: 5})
+		noewright.PollerConfig{Interval: 20 * time.Millisecond, Workers: 1, MaxAttempts: 5})
 	if err != nil {
 		t.Fatal(err)
 	}

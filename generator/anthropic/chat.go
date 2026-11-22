@@ -20,7 +20,7 @@ import (
 
 	"github.com/anthropics/anthropic-sdk-go/v2"
 	"github.com/anthropics/anthropic-sdk-go/v2/option"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // defaultBaseURL is the Claude API. A base URL may be given with or without
@@ -42,8 +42,8 @@ var effortLevels = map[string]anthropic.OutputConfigEffort{
 	"max":    anthropic.OutputConfigEffortMax,
 }
 
-// ChatGenerator implements loom.Generator, loom.StreamingGenerator and
-// loom.Verifier for Anthropic Claude models.
+// ChatGenerator implements noewright.Generator, noewright.StreamingGenerator and
+// noewright.Verifier for Anthropic Claude models.
 type ChatGenerator struct {
 	apiKey  string
 	model   string
@@ -129,7 +129,7 @@ func (g *ChatGenerator) baseURLAllowed(v string) bool {
 // baseURLAllowed; otherwise withOverrides returns an error rather than fall back
 // to the default endpoint (fail-closed). The copy shares the SDK client, whose
 // per-call settings come from requestOptions.
-func (g *ChatGenerator) withOverrides(req loom.GenerateRequest) (*ChatGenerator, error) {
+func (g *ChatGenerator) withOverrides(req noewright.GenerateRequest) (*ChatGenerator, error) {
 	if len(req.Overrides) == 0 {
 		return g, nil
 	}
@@ -161,10 +161,10 @@ func (g *ChatGenerator) requestOptions() []option.RequestOption {
 	}
 }
 
-func (g *ChatGenerator) Modality() loom.Modality { return loom.ModalityText }
+func (g *ChatGenerator) Modality() noewright.Modality { return noewright.ModalityText }
 
 // Generate calls the Anthropic Messages API synchronously.
-func (g *ChatGenerator) Generate(ctx context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g *ChatGenerator) Generate(ctx context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	g, err := g.withOverrides(req)
 	if err != nil {
 		return nil, err
@@ -182,7 +182,7 @@ func (g *ChatGenerator) Generate(ctx context.Context, req loom.GenerateRequest) 
 
 // GenerateStream calls the Anthropic streaming API. Text deltas arrive on the
 // first channel; the assembled Result (or a failed one) on the second.
-func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateRequest) (<-chan loom.Chunk, <-chan loom.Result, error) {
+func (g *ChatGenerator) GenerateStream(ctx context.Context, req noewright.GenerateRequest) (<-chan noewright.Chunk, <-chan noewright.Result, error) {
 	g, err := g.withOverrides(req)
 	if err != nil {
 		return nil, nil, err
@@ -192,8 +192,8 @@ func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateReq
 		return nil, nil, err
 	}
 
-	chunks := make(chan loom.Chunk, 64)
-	results := make(chan loom.Result, 1)
+	chunks := make(chan noewright.Chunk, 64)
+	results := make(chan noewright.Result, 1)
 
 	go func() {
 		defer close(chunks)
@@ -206,29 +206,29 @@ func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateReq
 		for stream.Next() {
 			ev := stream.Current()
 			if err := msg.Accumulate(ev); err != nil {
-				results <- loom.NewFailedResult(loom.ModalityText, fmt.Errorf("anthropic: stream: %w", err))
+				results <- noewright.NewFailedResult(noewright.ModalityText, fmt.Errorf("anthropic: stream: %w", err))
 				return
 			}
 			if delta, ok := ev.AsAny().(anthropic.ContentBlockDeltaEvent); ok {
 				if text, ok := delta.Delta.AsAny().(anthropic.TextDelta); ok && text.Text != "" {
 					sawText = true
-					chunks <- loom.Chunk{Content: text.Text}
+					chunks <- noewright.Chunk{Content: text.Text}
 				}
 			}
 		}
 		// A transport error before any text fails the result; after some text
 		// the partial output is kept, as before.
 		if err := stream.Err(); err != nil && !sawText {
-			results <- loom.NewFailedResult(loom.ModalityText, fmt.Errorf("anthropic: %w", err))
+			results <- noewright.NewFailedResult(noewright.ModalityText, fmt.Errorf("anthropic: %w", err))
 			return
 		}
 		// A refusal, even mid-stream after some text, fails the result; the
 		// engine surfaces it as GenerationRejected.
 		if msg.StopReason == anthropic.StopReasonRefusal {
-			results <- loom.NewFailedResult(loom.ModalityText, refusalError(msg.StopDetails))
+			results <- noewright.NewFailedResult(noewright.ModalityText, refusalError(msg.StopDetails))
 			return
 		}
-		tr := loom.NewTextResult(messageText(&msg), string(msg.StopReason), int(msg.Usage.InputTokens), int(msg.Usage.OutputTokens))
+		tr := noewright.NewTextResult(messageText(&msg), string(msg.StopReason), int(msg.Usage.InputTokens), int(msg.Usage.OutputTokens))
 		tr.Metadata()["model"] = g.model
 		results <- tr
 	}()
@@ -245,7 +245,7 @@ func (g *ChatGenerator) GenerateStream(ctx context.Context, req loom.GenerateReq
 //     native structured outputs (output_config.format). Otherwise the JSON
 //     contract is steered through the system prompt.
 //   - Temperature and TopP are never sent (see the package doc).
-func (g *ChatGenerator) buildParams(req loom.GenerateRequest) (anthropic.MessageNewParams, error) {
+func (g *ChatGenerator) buildParams(req noewright.GenerateRequest) (anthropic.MessageNewParams, error) {
 	maxTokens := req.Params.MaxTokens
 	if maxTokens == 0 {
 		maxTokens = defaultMaxTokens
@@ -278,7 +278,7 @@ func (g *ChatGenerator) buildParams(req loom.GenerateRequest) (anthropic.Message
 // agent declares a response format without native structured outputs. The
 // contract is validated by loom's SchemaValidationPostHook; toResult then
 // decodes the JSON into a StructuredResult.
-func systemWithFormat(req loom.GenerateRequest) string {
+func systemWithFormat(req noewright.GenerateRequest) string {
 	if req.ResponseFormat == nil {
 		return req.SystemPrompt
 	}
@@ -300,7 +300,7 @@ func systemWithFormat(req loom.GenerateRequest) string {
 // toResult converts a complete Message into a loom Result: a refusal becomes a
 // GenerationRejected error, JSON output for a ResponseFormat a
 // StructuredResult, anything else a TextResult.
-func (g *ChatGenerator) toResult(msg *anthropic.Message, req loom.GenerateRequest) (loom.Result, error) {
+func (g *ChatGenerator) toResult(msg *anthropic.Message, req noewright.GenerateRequest) (noewright.Result, error) {
 	if msg.StopReason == anthropic.StopReasonRefusal {
 		return nil, refusalError(msg.StopDetails)
 	}
@@ -309,12 +309,12 @@ func (g *ChatGenerator) toResult(msg *anthropic.Message, req loom.GenerateReques
 	if req.ResponseFormat != nil {
 		var data map[string]any
 		if err := json.Unmarshal([]byte(content), &data); err == nil {
-			sr := loom.NewStructuredResult(data, in, out)
+			sr := noewright.NewStructuredResult(data, in, out)
 			sr.Metadata()["model"] = g.model
 			return sr, nil
 		}
 	}
-	tr := loom.NewTextResult(content, string(msg.StopReason), in, out)
+	tr := noewright.NewTextResult(content, string(msg.StopReason), in, out)
 	tr.Metadata()["model"] = g.model
 	return tr, nil
 }
@@ -340,19 +340,19 @@ func refusalError(d anthropic.RefusalStopDetails) error {
 	if d.Explanation != "" {
 		msg += ": " + d.Explanation
 	}
-	return &loom.GenerationError{Kind: loom.GenerationRejected, Message: msg}
+	return &noewright.GenerationError{Kind: noewright.GenerationRejected, Message: msg}
 }
 
-var _ loom.Verifier = (*ChatGenerator)(nil)
+var _ noewright.Verifier = (*ChatGenerator)(nil)
 
 // Verify checks the API key and model against the Models API (GET
 // /v1/models/{model}), honouring "api_key", "model" and "base_url" overrides.
 // It generates nothing and spends no tokens. A 401/403 wraps
-// loom.ErrKeyRejected; a 404 means the key works but the model does not exist.
-func (g *ChatGenerator) Verify(ctx context.Context, overrides map[string]any) (loom.ModelInfo, error) {
-	g, err := g.withOverrides(loom.GenerateRequest{Overrides: overrides})
+// noewright.ErrKeyRejected; a 404 means the key works but the model does not exist.
+func (g *ChatGenerator) Verify(ctx context.Context, overrides map[string]any) (noewright.ModelInfo, error) {
+	g, err := g.withOverrides(noewright.GenerateRequest{Overrides: overrides})
 	if err != nil {
-		return loom.ModelInfo{}, err
+		return noewright.ModelInfo{}, err
 	}
 	m, err := g.client.Models.Get(ctx, g.model, anthropic.ModelGetParams{}, g.requestOptions()...)
 	if err != nil {
@@ -360,14 +360,14 @@ func (g *ChatGenerator) Verify(ctx context.Context, overrides map[string]any) (l
 		if errors.As(err, &apiErr) {
 			switch apiErr.StatusCode {
 			case http.StatusUnauthorized, http.StatusForbidden:
-				return loom.ModelInfo{}, fmt.Errorf("%w (anthropic http %d)", loom.ErrKeyRejected, apiErr.StatusCode)
+				return noewright.ModelInfo{}, fmt.Errorf("%w (anthropic http %d)", noewright.ErrKeyRejected, apiErr.StatusCode)
 			case http.StatusNotFound:
-				return loom.ModelInfo{}, fmt.Errorf("anthropic: model %q not found for this key", g.model)
+				return noewright.ModelInfo{}, fmt.Errorf("anthropic: model %q not found for this key", g.model)
 			}
 		}
-		return loom.ModelInfo{}, fmt.Errorf("anthropic: %w", err)
+		return noewright.ModelInfo{}, fmt.Errorf("anthropic: %w", err)
 	}
-	return loom.ModelInfo{
+	return noewright.ModelInfo{
 		ID:              m.ID,
 		DisplayName:     m.DisplayName,
 		ContextWindow:   int(m.MaxInputTokens),

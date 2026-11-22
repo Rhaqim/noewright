@@ -1,4 +1,4 @@
-// loom-cli is the command-line interface for the Loom procgen engine.
+// noewright is the command-line interface for the Loom procgen engine.
 //
 // Commands:
 //
@@ -17,14 +17,14 @@ import (
 	_ "github.com/lib/pq"
 	"github.com/spf13/cobra"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/generator/echo"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/generator/echo"
+	"github.com/rhaqim/noewright/schema"
 )
 
 func main() {
 	root := &cobra.Command{
-		Use:   "loom-cli",
+		Use:   "noewright",
 		Short: "Loom procgen engine CLI",
 	}
 	root.PersistentFlags().String("dsn", "", "PostgreSQL connection string. WARNING: visible to other users via 'ps'/'/proc'; prefer LOOM_DSN or --dsn-file")
@@ -119,9 +119,9 @@ func seedCmd() *cobra.Command {
 			defer db.Close()
 
 			prefix, _ := cmd.Flags().GetString("prefix")
-			e, err := loom.New(loom.Config{
+			e, err := noewright.New(noewright.Config{
 				DB:           db,
-				Dialect:      loom.DialectPostgres,
+				Dialect:      noewright.DialectPostgres,
 				SchemaPrefix: prefix,
 				Generators:   cliGenerators(),
 			})
@@ -157,9 +157,9 @@ func testCmd() *cobra.Command {
 			defer db.Close()
 
 			prefix, _ := cmd.Flags().GetString("prefix")
-			e, err := loom.New(loom.Config{
+			e, err := noewright.New(noewright.Config{
 				DB:           db,
-				Dialect:      loom.DialectPostgres,
+				Dialect:      noewright.DialectPostgres,
 				SchemaPrefix: prefix,
 				Generators:   cliGenerators(),
 			})
@@ -191,8 +191,8 @@ func testCmd() *cobra.Command {
 // cliGenerators returns the generators available to the CLI.
 // The echo generator is always included so test plans can run without real API keys.
 // Real generators (openai, anthropic) are activated when their API-key env vars are set.
-func cliGenerators() map[string]loom.Generator {
-	gens := map[string]loom.Generator{
+func cliGenerators() map[string]noewright.Generator {
+	gens := map[string]noewright.Generator{
 		"echo": echo.New(""),
 	}
 	return gens

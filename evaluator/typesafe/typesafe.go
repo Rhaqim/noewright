@@ -10,7 +10,7 @@
 // Usage:
 //
 //	ev := typesafe.New(os.Getenv("TYPESAFE_API_KEY"))
-//	e, _ := loom.New(loom.Config{ /* ... */ Evaluator: ev })
+//	e, _ := noewright.New(noewright.Config{ /* ... */ Evaluator: ev })
 //
 // The API key is required. See https://docs.typesafe.ai for the question and
 // answer reference this package mirrors.
@@ -27,7 +27,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rhaqim/loom/evaluator"
+	"github.com/rhaqim/noewright/evaluator"
 )
 
 const (

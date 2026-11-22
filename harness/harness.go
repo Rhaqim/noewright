@@ -34,7 +34,7 @@ import (
 	"sync"
 	"time"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 const (
@@ -94,9 +94,9 @@ type VariantMatrix struct {
 	// Empty means "use the agent's default generator".
 	Providers []string `yaml:"providers" json:"providers"`
 	// SystemPrompts override the agent's system prompt per variant (optional).
-	SystemPrompts []loom.PromptRef `yaml:"system_prompts" json:"system_prompts"`
+	SystemPrompts []noewright.PromptRef `yaml:"system_prompts" json:"system_prompts"`
 	// Params overrides the agent's GenerateParams per variant (optional).
-	Params []loom.GenerateParams `yaml:"params" json:"params"`
+	Params []noewright.GenerateParams `yaml:"params" json:"params"`
 }
 
 // -----------------------------------------------------------------------
@@ -104,12 +104,12 @@ type VariantMatrix struct {
 // -----------------------------------------------------------------------
 
 // Assertion is a function that checks a Result and returns an error if it fails.
-type Assertion func(step *loom.Step, result loom.Result) error
+type Assertion func(step *noewright.Step, result noewright.Result) error
 
 // MinLength asserts the text content of a TextResult has at least n characters.
 func MinLength(n int) Assertion {
-	return func(_ *loom.Step, result loom.Result) error {
-		tr, ok := result.(*loom.TextResult)
+	return func(_ *noewright.Step, result noewright.Result) error {
+		tr, ok := result.(*noewright.TextResult)
 		if !ok {
 			return nil // only applicable to text
 		}
@@ -122,8 +122,8 @@ func MinLength(n int) Assertion {
 
 // MaxLength asserts the text content of a TextResult has at most n characters.
 func MaxLength(n int) Assertion {
-	return func(_ *loom.Step, result loom.Result) error {
-		tr, ok := result.(*loom.TextResult)
+	return func(_ *noewright.Step, result noewright.Result) error {
+		tr, ok := result.(*noewright.TextResult)
 		if !ok {
 			return nil
 		}
@@ -136,8 +136,8 @@ func MaxLength(n int) Assertion {
 
 // NoKeyword fails if the text content contains any of the given keywords (case-insensitive).
 func NoKeyword(keywords ...string) Assertion {
-	return func(_ *loom.Step, result loom.Result) error {
-		tr, ok := result.(*loom.TextResult)
+	return func(_ *noewright.Step, result noewright.Result) error {
+		tr, ok := result.(*noewright.TextResult)
 		if !ok {
 			return nil
 		}
@@ -152,8 +152,8 @@ func NoKeyword(keywords ...string) Assertion {
 }
 
 // HasStatus asserts the result has the expected status.
-func HasStatus(want loom.ResultStatus) Assertion {
-	return func(_ *loom.Step, result loom.Result) error {
+func HasStatus(want noewright.ResultStatus) Assertion {
+	return func(_ *noewright.Step, result noewright.Result) error {
 		if result.Status() != want {
 			return fmt.Errorf("has_status: got %q, want %q", result.Status(), want)
 		}
@@ -162,8 +162,8 @@ func HasStatus(want loom.ResultStatus) Assertion {
 }
 
 // Custom wraps a user-defined assertion function.
-func Custom(name string, fn func(step *loom.Step, result loom.Result) error) Assertion {
-	return func(step *loom.Step, result loom.Result) error {
+func Custom(name string, fn func(step *noewright.Step, result noewright.Result) error) Assertion {
+	return func(step *noewright.Step, result noewright.Result) error {
 		if err := fn(step, result); err != nil {
 			return fmt.Errorf("%s: %w", name, err)
 		}
@@ -218,7 +218,7 @@ type StepReport struct {
 
 // Run executes the TestPlan against all variants and returns a TestReport.
 // Each variant runs its own ephemeral session.
-func Run(ctx context.Context, e *loom.Engine, plan *TestPlan) (*TestReport, error) {
+func Run(ctx context.Context, e *noewright.Engine, plan *TestPlan) (*TestReport, error) {
 	report := &TestReport{
 		PlanName:  plan.Name,
 		StartedAt: time.Now(),
@@ -272,8 +272,8 @@ func Run(ctx context.Context, e *loom.Engine, plan *TestPlan) (*TestReport, erro
 // variantConfig is one expansion of the VariantMatrix.
 type variantConfig struct {
 	Provider     string
-	SystemPrompt *loom.PromptRef
-	Params       *loom.GenerateParams
+	SystemPrompt *noewright.PromptRef
+	Params       *noewright.GenerateParams
 }
 
 func expandVariants(m VariantMatrix) []variantConfig {
@@ -284,11 +284,11 @@ func expandVariants(m VariantMatrix) []variantConfig {
 	}
 	prompts := m.SystemPrompts
 	if len(prompts) == 0 {
-		prompts = []loom.PromptRef{{}} // one no-op prompt slot
+		prompts = []noewright.PromptRef{{}} // one no-op prompt slot
 	}
 	params := m.Params
 	if len(params) == 0 {
-		params = []loom.GenerateParams{{}} // one no-op param slot
+		params = []noewright.GenerateParams{{}} // one no-op param slot
 	}
 	for _, p := range providers {
 		for pi := range prompts {
@@ -310,17 +310,17 @@ func expandVariants(m VariantMatrix) []variantConfig {
 	return out
 }
 
-func runVariant(ctx context.Context, e *loom.Engine, plan *TestPlan, vc variantConfig, idx int) *VariantReport {
+func runVariant(ctx context.Context, e *noewright.Engine, plan *TestPlan, vc variantConfig, idx int) *VariantReport {
 	start := time.Now()
 	vr := &VariantReport{Index: idx, Provider: vc.Provider}
 
 	// Create a test session tagged so GC can clean it up.
 	tags := append([]string{"test:true"}, plan.Session.Tags...)
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: plan.Session.PlatformID,
 		Tags:       tags,
-		State: loom.State{
-			Modality: loom.ModalityText,
+		State: noewright.State{
+			Modality: noewright.ModalityText,
 			Vars:     map[string]any{},
 		},
 	}
@@ -333,7 +333,7 @@ func runVariant(ctx context.Context, e *loom.Engine, plan *TestPlan, vc variantC
 	passed := true
 	for si, scriptStep := range plan.Session.Steps {
 		stepStart := time.Now()
-		req := loom.StepRequest{
+		req := noewright.StepRequest{
 			AgentSlug:    scriptStep.AgentSlug,
 			AgentVersion: scriptStep.AgentVersion,
 		}
@@ -350,8 +350,8 @@ func runVariant(ctx context.Context, e *loom.Engine, plan *TestPlan, vc variantC
 			req.SystemPromptOverride = vc.SystemPrompt
 		}
 		if scriptStep.ActionPayload != "" {
-			req.Action = &loom.Action{
-				Kind:    loom.ActionFreeText,
+			req.Action = &noewright.Action{
+				Kind:    noewright.ActionFreeText,
 				Payload: map[string]any{"text": scriptStep.ActionPayload},
 			}
 		}

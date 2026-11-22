@@ -200,5 +200,5 @@ examples/dnd/
 └── game/
     ├── dice.go         # dice rolling (d4–d100, RollExpr, AbilityCheck)
     ├── prompts.go      # DM system prompt and user template generators
-    └── engine.go       # DndEngine: wraps loom.Engine, seeds agents, runs turns
+    └── engine.go       # DndEngine: wraps noewright.Engine, seeds agents, runs turns
 ```

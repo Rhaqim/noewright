@@ -4,7 +4,7 @@ go 1.26.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/rhaqim/loom v0.0.0-00010101000000-000000000000
+	github.com/rhaqim/noewright v0.0.0-00010101000000-000000000000
 	modernc.org/sqlite v1.62.0
 )
 
@@ -19,4 +19,4 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 )
 
-replace github.com/rhaqim/loom => ../..
+replace github.com/rhaqim/noewright => ../..

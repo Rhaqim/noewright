@@ -9,16 +9,16 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/schema"
 	_ "modernc.org/sqlite"
 )
 
 type flowStubGen struct{}
 
-func (flowStubGen) Modality() loom.Modality { return loom.ModalityText }
-func (flowStubGen) Generate(context.Context, loom.GenerateRequest) (loom.Result, error) {
-	return loom.NewTextResult("ok", "stop", 1, 1), nil
+func (flowStubGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (flowStubGen) Generate(context.Context, noewright.GenerateRequest) (noewright.Result, error) {
+	return noewright.NewTextResult("ok", "stop", 1, 1), nil
 }
 
 // TestFlowRoundTripSQLite runs the full persisted-flow lifecycle against an
@@ -36,8 +36,8 @@ func TestFlowRoundTripSQLite(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{"g": flowStubGen{}}})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{"g": flowStubGen{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -60,8 +60,8 @@ func TestFlowRoundTripPostgres(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectPostgres).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectPostgres,
-		Generators: map[string]loom.Generator{"g": flowStubGen{}}})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectPostgres,
+		Generators: map[string]noewright.Generator{"g": flowStubGen{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,22 +70,22 @@ func TestFlowRoundTripPostgres(t *testing.T) {
 
 // flowRoundTrip exercises persist -> read-back -> run-from-record -> delete, plus
 // the Create/Delete validation, with identical assertions on both dialects.
-func flowRoundTrip(t *testing.T, e *loom.Engine) {
+func flowRoundTrip(t *testing.T, e *noewright.Engine) {
 	t.Helper()
 	ctx := context.Background()
 	uniq := uuid.NewString()[:8]
 	lead := "lead-" + uniq
 	follower := "fol-" + uniq
 	for _, slug := range []string{lead, follower} {
-		if err := e.Agents().Create(ctx, &loom.Agent{Slug: slug, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "g"}); err != nil {
+		if err := e.Agents().Create(ctx, &noewright.Agent{Slug: slug, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "g"}); err != nil {
 			t.Fatal(err)
 		}
 	}
 
 	flowSlug := "flow-" + uniq
-	if err := e.Flows().Create(ctx, &loom.FlowRecord{
+	if err := e.Flows().Create(ctx, &noewright.FlowRecord{
 		Owner: "", Slug: flowSlug, Version: 1, Category: "demo", IsActive: true,
-		Agents: []loom.FlowAgentEntry{
+		Agents: []noewright.FlowAgentEntry{
 			{AgentSlug: lead, AgentVersion: 1},
 			{AgentSlug: follower, AgentVersion: 1, OutputKey: "Critic", Params: map[string]any{"temperature": 0.5}},
 		},
@@ -139,10 +139,10 @@ func flowRoundTrip(t *testing.T, e *loom.Engine) {
 	}
 
 	// Validation: empty agents, version 0 on Create, and version 0 on Delete are rejected.
-	if err := e.Flows().Create(ctx, &loom.FlowRecord{Slug: "bad", Version: 1}); err == nil {
+	if err := e.Flows().Create(ctx, &noewright.FlowRecord{Slug: "bad", Version: 1}); err == nil {
 		t.Fatal("expected error creating a flow with no agents")
 	}
-	if err := e.Flows().Create(ctx, &loom.FlowRecord{Slug: "bad", Version: 0, Agents: []loom.FlowAgentEntry{{AgentSlug: lead}}}); err == nil {
+	if err := e.Flows().Create(ctx, &noewright.FlowRecord{Slug: "bad", Version: 0, Agents: []noewright.FlowAgentEntry{{AgentSlug: lead}}}); err == nil {
 		t.Fatal("expected error creating a flow with version 0")
 	}
 	if err := e.Flows().Delete(ctx, "", flowSlug, 0); err == nil {
@@ -150,11 +150,11 @@ func flowRoundTrip(t *testing.T, e *loom.Engine) {
 	}
 
 	// Execute the turn straight from the saved record.
-	sess := &loom.Session{PlatformID: "p", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "p", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
-	turn, err := e.RunTurnBySlug(ctx, sess, "", flowSlug, 1, loom.TurnRequest{})
+	turn, err := e.RunTurnBySlug(ctx, sess, "", flowSlug, 1, noewright.TurnRequest{})
 	if err != nil {
 		t.Fatalf("RunTurnBySlug: %v", err)
 	}
@@ -166,7 +166,7 @@ func flowRoundTrip(t *testing.T, e *loom.Engine) {
 	if err := e.Flows().Delete(ctx, "", flowSlug, 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Flows().Get(ctx, "", flowSlug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Flows().Get(ctx, "", flowSlug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound after delete, got %v", err)
 	}
 }

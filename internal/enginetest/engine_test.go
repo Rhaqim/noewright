@@ -11,9 +11,9 @@ import (
 
 	_ "github.com/lib/pq"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/generator/echo"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/generator/echo"
+	"github.com/rhaqim/noewright/schema"
 )
 
 // openTestDB opens a real Postgres connection and applies the schema.
@@ -54,39 +54,39 @@ func openTestDB(t *testing.T) *sql.DB {
 }
 
 // newTestEngine creates a Loom engine backed by a real Postgres DB.
-func newTestEngine(t *testing.T) *loom.Engine {
+func newTestEngine(t *testing.T) *noewright.Engine {
 	t.Helper()
 	db := openTestDB(t)
-	e, err := loom.New(loom.Config{
+	e, err := noewright.New(noewright.Config{
 		DB:      db,
-		Dialect: loom.DialectPostgres,
-		Generators: map[string]loom.Generator{
+		Dialect: noewright.DialectPostgres,
+		Generators: map[string]noewright.Generator{
 			"echo": echo.New("[test]"),
 		},
 	})
 	if err != nil {
-		t.Fatalf("loom.New: %v", err)
+		t.Fatalf("noewright.New: %v", err)
 	}
 	return e
 }
 
 // seedTestAgent creates a prompt pair + agent in the DB, returning the agent slug.
-func seedTestAgent(t *testing.T, e *loom.Engine, slug string) string {
+func seedTestAgent(t *testing.T, e *noewright.Engine, slug string) string {
 	t.Helper()
 	ctx := context.Background()
 
 	// Use unique slugs per test to avoid collisions between parallel runs.
-	sysPrmt := &loom.Prompt{
+	sysPrmt := &noewright.Prompt{
 		Slug:     slug + "-sys",
 		Version:  1,
-		Kind:     loom.PromptKindSystem,
+		Kind:     noewright.PromptKindSystem,
 		Category: "test",
 		Body:     "You are a test assistant.",
 	}
-	userTmpl := &loom.Prompt{
+	userTmpl := &noewright.Prompt{
 		Slug:     slug + "-user",
 		Version:  1,
-		Kind:     loom.PromptKindUserTemplate,
+		Kind:     noewright.PromptKindUserTemplate,
 		Category: "test",
 		Body:     "User says: {{.Action.Payload.text}}",
 	}
@@ -104,11 +104,11 @@ func seedTestAgent(t *testing.T, e *loom.Engine, slug string) string {
 		t.Fatalf("get user template: %v", err)
 	}
 
-	agent := &loom.Agent{
+	agent := &noewright.Agent{
 		Slug:           slug,
 		Version:        1,
 		Category:       "test",
-		Modal:          loom.ModalityText,
+		Modal:          noewright.ModalityText,
 		GeneratorSlug:  "echo",
 		SystemPromptID: sys.ID,
 		UserTemplateID: ut.ID,
@@ -125,11 +125,11 @@ func TestEngine_CreateAndGetSession(t *testing.T) {
 	e := newTestEngine(t)
 	ctx := context.Background()
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: "test-user",
 		Tags:       []string{"test:true"},
-		State: loom.State{
-			Modality: loom.ModalityText,
+		State: noewright.State{
+			Modality: noewright.ModalityText,
 			Vars:     map[string]any{"scene": "start"},
 		},
 	}
@@ -155,11 +155,11 @@ func TestEngine_RunStep_TextResult(t *testing.T) {
 
 	agentSlug := seedTestAgent(t, e, "eng-rsstep-"+randomSuffix())
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: "test-user",
 		Tags:       []string{"test:true"},
-		State: loom.State{
-			Modality: loom.ModalityText,
+		State: noewright.State{
+			Modality: noewright.ModalityText,
 			Vars:     map[string]any{},
 		},
 	}
@@ -167,10 +167,10 @@ func TestEngine_RunStep_TextResult(t *testing.T) {
 		t.Fatalf("Create session: %v", err)
 	}
 
-	step, err := e.RunStep(ctx, sess, loom.StepRequest{
+	step, err := e.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug: agentSlug,
-		Action: &loom.Action{
-			Kind:    loom.ActionFreeText,
+		Action: &noewright.Action{
+			Kind:    noewright.ActionFreeText,
 			Payload: map[string]any{"text": "hello world"},
 		},
 	})
@@ -180,10 +180,10 @@ func TestEngine_RunStep_TextResult(t *testing.T) {
 	if step.Result == nil {
 		t.Fatal("expected non-nil result")
 	}
-	if step.Result.Status() != loom.ResultStatusReady {
+	if step.Result.Status() != noewright.ResultStatusReady {
 		t.Errorf("status: got %q want ready", step.Result.Status())
 	}
-	tr, ok := step.Result.(*loom.TextResult)
+	tr, ok := step.Result.(*noewright.TextResult)
 	if !ok {
 		t.Fatalf("expected *TextResult, got %T", step.Result)
 	}
@@ -198,20 +198,20 @@ func TestEngine_MultiStep_SessionHistory(t *testing.T) {
 
 	agentSlug := seedTestAgent(t, e, "eng-ms-"+randomSuffix())
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: "test-user",
 		Tags:       []string{"test:true"},
-		State:      loom.State{Modality: loom.ModalityText, Vars: map[string]any{}},
+		State:      noewright.State{Modality: noewright.ModalityText, Vars: map[string]any{}},
 	}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
 	for i := range 3 {
-		_, err := e.RunStep(ctx, sess, loom.StepRequest{
+		_, err := e.RunStep(ctx, sess, noewright.StepRequest{
 			AgentSlug: agentSlug,
-			Action: &loom.Action{
-				Kind:    loom.ActionFreeText,
+			Action: &noewright.Action{
+				Kind:    noewright.ActionFreeText,
 				Payload: map[string]any{"text": "step " + string(rune('A'+i))},
 			},
 		})
@@ -240,10 +240,10 @@ func TestEngine_ForkSession(t *testing.T) {
 
 	agentSlug := seedTestAgent(t, e, "eng-fork-"+randomSuffix())
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: "test-user",
 		Tags:       []string{"test:true"},
-		State:      loom.State{Modality: loom.ModalityText, Vars: map[string]any{}},
+		State:      noewright.State{Modality: noewright.ModalityText, Vars: map[string]any{}},
 	}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatalf("Create: %v", err)
@@ -251,10 +251,10 @@ func TestEngine_ForkSession(t *testing.T) {
 
 	// Run two steps on the main branch.
 	for i := range 2 {
-		_, err := e.RunStep(ctx, sess, loom.StepRequest{
+		_, err := e.RunStep(ctx, sess, noewright.StepRequest{
 			AgentSlug: agentSlug,
-			Action: &loom.Action{
-				Kind:    loom.ActionFreeText,
+			Action: &noewright.Action{
+				Kind:    noewright.ActionFreeText,
 				Payload: map[string]any{"text": "main " + string(rune('0'+i))},
 			},
 		})
@@ -276,10 +276,10 @@ func TestEngine_ForkSession(t *testing.T) {
 	}
 
 	// Run a divergent step on the branch.
-	_, err = e.RunStep(ctx, branch, loom.StepRequest{
+	_, err = e.RunStep(ctx, branch, noewright.StepRequest{
 		AgentSlug: agentSlug,
-		Action: &loom.Action{
-			Kind:    loom.ActionFreeText,
+		Action: &noewright.Action{
+			Kind:    noewright.ActionFreeText,
 			Payload: map[string]any{"text": "branch diverges"},
 		},
 	})
@@ -306,19 +306,19 @@ func TestEngine_CostRecording(t *testing.T) {
 
 	agentSlug := seedTestAgent(t, e, "eng-cost-"+randomSuffix())
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: "cost-test-user",
 		Tags:       []string{"test:true"},
-		State:      loom.State{Modality: loom.ModalityText, Vars: map[string]any{}},
+		State:      noewright.State{Modality: noewright.ModalityText, Vars: map[string]any{}},
 	}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	_, err := e.RunStep(ctx, sess, loom.StepRequest{
+	_, err := e.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug: agentSlug,
-		Action: &loom.Action{
-			Kind:    loom.ActionFreeText,
+		Action: &noewright.Action{
+			Kind:    noewright.ActionFreeText,
 			Payload: map[string]any{"text": "cost tracking test"},
 		},
 	})
@@ -345,27 +345,27 @@ func TestEngine_PreHook_Skip(t *testing.T) {
 	agentSlug := seedTestAgent(t, e, "eng-prehook-"+randomSuffix())
 
 	// Register a pre-hook that always skips.
-	e.Hooks().RegisterPre("always-skip", func(_ context.Context, _ *loom.StepRequest) error {
-		return loom.ErrSkip
+	e.Hooks().RegisterPre("always-skip", func(_ context.Context, _ *noewright.StepRequest) error {
+		return noewright.ErrSkip
 	})
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: "test-user",
 		Tags:       []string{"test:true"},
-		State:      loom.State{Modality: loom.ModalityText, Vars: map[string]any{}},
+		State:      noewright.State{Modality: noewright.ModalityText, Vars: map[string]any{}},
 	}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatalf("Create: %v", err)
 	}
 
-	_, err := e.RunStep(ctx, sess, loom.StepRequest{
+	_, err := e.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug: agentSlug,
-		Action: &loom.Action{
-			Kind:    loom.ActionFreeText,
+		Action: &noewright.Action{
+			Kind:    noewright.ActionFreeText,
 			Payload: map[string]any{"text": "should be skipped"},
 		},
 	})
-	if !loom.IsSkip(err) {
+	if !noewright.IsSkip(err) {
 		t.Errorf("expected skip error, got: %v", err)
 	}
 }
@@ -375,10 +375,10 @@ func TestEngine_Prompts_CRUD(t *testing.T) {
 	ctx := context.Background()
 
 	slug := "test-prompt-" + randomSuffix()
-	p := &loom.Prompt{
+	p := &noewright.Prompt{
 		Slug:     slug,
 		Version:  1,
-		Kind:     loom.PromptKindSystem,
+		Kind:     noewright.PromptKindSystem,
 		Category: "test",
 		Body:     "A test prompt body.",
 		Notes:    "created in TestEngine_Prompts_CRUD",
@@ -395,7 +395,7 @@ func TestEngine_Prompts_CRUD(t *testing.T) {
 		t.Errorf("Body: got %q want %q", got.Body, p.Body)
 	}
 
-	list, err := e.Prompts().List(ctx, "", loom.PromptKindSystem, "test")
+	list, err := e.Prompts().List(ctx, "", noewright.PromptKindSystem, "test")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}
@@ -416,11 +416,11 @@ func TestEngine_Agents_CRUD(t *testing.T) {
 	ctx := context.Background()
 
 	slug := "test-agent-" + randomSuffix()
-	a := &loom.Agent{
+	a := &noewright.Agent{
 		Slug:          slug,
 		Version:       1,
 		Category:      "test",
-		Modal:         loom.ModalityText,
+		Modal:         noewright.ModalityText,
 		GeneratorSlug: "echo",
 	}
 	if err := e.Agents().Create(ctx, a); err != nil {
@@ -448,15 +448,15 @@ func TestEngine_Budget_CreateAndList(t *testing.T) {
 	e := newTestEngine(t)
 	ctx := context.Background()
 
-	b := &loom.Budget{
+	b := &noewright.Budget{
 		Name: "test-budget-" + randomSuffix(),
-		Target: loom.BudgetTarget{
-			Kind: loom.TargetPlatformID,
+		Target: noewright.BudgetTarget{
+			Kind: noewright.TargetPlatformID,
 			Key:  "budget-test-user",
 		},
-		Window:   loom.BudgetWindowDay,
-		Limit:    loom.BudgetLimit{USD: 1.0, Steps: 100},
-		OnExceed: loom.BudgetBlock,
+		Window:   noewright.BudgetWindowDay,
+		Limit:    noewright.BudgetLimit{USD: 1.0, Steps: 100},
+		OnExceed: noewright.BudgetBlock,
 		Active:   true,
 	}
 	if err := e.Budgets().Create(ctx, b); err != nil {
@@ -471,7 +471,7 @@ func TestEngine_Budget_CreateAndList(t *testing.T) {
 		t.Errorf("Limit.USD: got %v want 1.0", got.Limit.USD)
 	}
 
-	list, err := e.Budgets().List(ctx, loom.TargetPlatformID, "budget-test-user")
+	list, err := e.Budgets().List(ctx, noewright.TargetPlatformID, "budget-test-user")
 	if err != nil {
 		t.Fatalf("List: %v", err)
 	}

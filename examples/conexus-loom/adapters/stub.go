@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // StubGenerator is an offline stand-in for a real text model. It inspects the
@@ -14,29 +14,29 @@ import (
 // Set CONEXUS_PROVIDER=stub to use it. Swap for generator/openai to go live.
 type StubGenerator struct{}
 
-func (StubGenerator) Modality() loom.Modality { return loom.ModalityText }
+func (StubGenerator) Modality() noewright.Modality { return noewright.ModalityText }
 
-func (g StubGenerator) Generate(_ context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g StubGenerator) Generate(_ context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	content := g.respond(req)
-	return loom.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4), nil
+	return noewright.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4), nil
 }
 
-func (g StubGenerator) GenerateStream(_ context.Context, req loom.GenerateRequest) (<-chan loom.Chunk, <-chan loom.Result, error) {
+func (g StubGenerator) GenerateStream(_ context.Context, req noewright.GenerateRequest) (<-chan noewright.Chunk, <-chan noewright.Result, error) {
 	content := g.respond(req)
-	chunks := make(chan loom.Chunk, 32)
-	results := make(chan loom.Result, 1)
+	chunks := make(chan noewright.Chunk, 32)
+	results := make(chan noewright.Result, 1)
 	go func() {
 		defer close(chunks)
 		defer close(results)
 		for _, w := range strings.Fields(content) {
-			chunks <- loom.Chunk{Content: w + " "}
+			chunks <- noewright.Chunk{Content: w + " "}
 		}
-		results <- loom.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4)
+		results <- noewright.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4)
 	}()
 	return chunks, results, nil
 }
 
-func (g StubGenerator) respond(req loom.GenerateRequest) string {
+func (g StubGenerator) respond(req noewright.GenerateRequest) string {
 	sys := req.SystemPrompt
 	switch {
 	case strings.Contains(sys, "convert a creator's block prompt"):
@@ -52,7 +52,7 @@ func (g StubGenerator) respond(req loom.GenerateRequest) string {
 	}
 }
 
-func (StubGenerator) stubAuthor(req loom.GenerateRequest) string {
+func (StubGenerator) stubAuthor(req noewright.GenerateRequest) string {
 	action := ""
 	if a, ok := req.Inputs["action"].(string); ok {
 		action = a
@@ -63,7 +63,7 @@ func (StubGenerator) stubAuthor(req loom.GenerateRequest) string {
 	return fmt.Sprintf("He weighed it for a long moment. %s. The decision settled in his chest like a stone, and the noise of the crowd seemed to fall away, leaving only the next step to take.", strings.TrimSuffix(action, "."))
 }
 
-func (StubGenerator) stubLogician(req loom.GenerateRequest) string {
+func (StubGenerator) stubLogician(req noewright.GenerateRequest) string {
 	// Diversify only after a QA retry, to demonstrate the hook→retry loop.
 	if len(req.Annotations) == 0 {
 		return `{"status":"ONGOING","reasoning":"stub","options":[

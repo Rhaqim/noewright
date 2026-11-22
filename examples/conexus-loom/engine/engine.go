@@ -16,12 +16,12 @@ import (
 	"github.com/rhaqim/conexus-loom/migration"
 	"github.com/rhaqim/conexus-loom/narrative"
 	"github.com/rhaqim/conexus-loom/ports"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // Config wires loom and the monorepo seams.
 type Config struct {
-	Loom         *loom.Engine
+	Loom         *noewright.Engine
 	Memory       ports.MemoryVault
 	Media        ports.MultimediaQueue
 	Plugins      ports.PluginRegistry
@@ -61,7 +61,7 @@ type Config struct {
 // Conexus is the application engine.
 type Conexus struct {
 	cfg  Config
-	flow loom.Flow
+	flow noewright.Flow
 }
 
 // New constructs the engine and registers the playthrough hooks on the loom
@@ -77,7 +77,7 @@ func New(cfg Config) *Conexus {
 	if cfg.ValidateSchemas {
 		// Structural check first (against the prompt's stored schema), then the
 		// semantic Logician QA (option count / verb-bucket dedupe).
-		cfg.Loom.Hooks().RegisterPost("schema-validate", loom.SchemaValidationPostHook())
+		cfg.Loom.Hooks().RegisterPost("schema-validate", noewright.SchemaValidationPostHook())
 	}
 	cfg.Loom.Hooks().RegisterPost("logician-qa", narrative.QAHook())
 	// Enforce a reader-friendly scene length for all providers. The Flow also
@@ -124,10 +124,10 @@ func (c *Conexus) StartStory(ctx context.Context, blockText, accountID string) (
 		Step:              0,
 		Status:            "ONGOING",
 	}
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: accountID,
-		State: loom.State{
-			Modality: loom.ModalityText,
+		State: noewright.State{
+			Modality: noewright.ModalityText,
 			Vars: map[string]any{
 				"world":        toMap(world),
 				"constitution": toMap(con),
@@ -209,14 +209,14 @@ func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, ac
 	}
 
 	var streamedDraft strings.Builder
-	turn, err := c.cfg.Loom.RunTurn(ctx, sess, loom.TurnRequest{
+	turn, err := c.cfg.Loom.RunTurn(ctx, sess, noewright.TurnRequest{
 		Flow:   c.flow,
 		Action: freeText(action),
 		Inputs: inputs,
 		// Turn-wide params (merged under each agent's own temperature); the
 		// current narrative tension travels to every agent.
 		Params: map[string]any{"tension": play.Tension},
-		OnChunk: func(ch loom.Chunk) {
+		OnChunk: func(ch noewright.Chunk) {
 			streamedDraft.WriteString(ch.Content)
 			if onChunk != nil {
 				onChunk(ch.Content)
@@ -241,7 +241,7 @@ func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, ac
 	res := &TurnResult{TurnID: turn.ID.String()}
 	// Do not reconstruct prose from streamed chunks: a retry streams rejected
 	// drafts too. The settled Loom result is the only draft that passed hooks.
-	res.Prose = strings.TrimSpace(loom.ResultText(turn.Lead.Result))
+	res.Prose = strings.TrimSpace(noewright.ResultText(turn.Lead.Result))
 
 	// Parse the Logician follower (QA hook already validated it).
 	var logic domain.LogicianOutput
@@ -262,7 +262,7 @@ func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, ac
 	// Parse the Title follower; fall back to the Logician's emitted title when
 	// the dedicated agent produced nothing.
 	if ts := turn.Followers[narrative.AgentTitle]; ts != nil {
-		res.Title = narrative.ParseTitle(loom.ResultText(ts.Result))
+		res.Title = narrative.ParseTitle(noewright.ResultText(ts.Result))
 	}
 	if res.Title == "" {
 		res.Title = strings.TrimSpace(logic.Title)
@@ -416,8 +416,8 @@ func (c *Conexus) Snapshot(ctx context.Context, storyID uuid.UUID) (*Snapshot, e
 }
 
 // memoryRecallHook injects recalled facts into the turn before the prompt renders.
-func (c *Conexus) memoryRecallHook() loom.PreHook {
-	return func(ctx context.Context, req *loom.StepRequest) error {
+func (c *Conexus) memoryRecallHook() noewright.PreHook {
+	return func(ctx context.Context, req *noewright.StepRequest) error {
 		if req.Session == nil || c.cfg.Memory == nil {
 			return nil
 		}
@@ -440,24 +440,24 @@ func (c *Conexus) memoryRecallHook() loom.PreHook {
 // ---- helpers ----
 
 // turnCost sums tokens and USD across every step in a turn, pricing each step by
-// the model the generator reported (loom.Config.Pricing), so a turn that mixes
+// the model the generator reported (noewright.Config.Pricing), so a turn that mixes
 // models is costed correctly.
-func (c *Conexus) turnCost(turn *loom.Turn) (in, out int, usd float64) {
+func (c *Conexus) turnCost(turn *noewright.Turn) (in, out int, usd float64) {
 	for _, s := range turn.Steps {
 		i, o := tokensOf(s.Result)
 		in += i
 		out += o
-		price, _ := c.cfg.Loom.PriceResult(loom.ResultModel(s.Result), i, o)
+		price, _ := c.cfg.Loom.PriceResult(noewright.ResultModel(s.Result), i, o)
 		usd += price
 	}
 	return
 }
 
-func tokensOf(res loom.Result) (int, int) {
+func tokensOf(res noewright.Result) (int, int) {
 	switch r := res.(type) {
-	case *loom.TextResult:
+	case *noewright.TextResult:
 		return r.InputTokens, r.OutputTokens
-	case *loom.StructuredResult:
+	case *noewright.StructuredResult:
 		return r.InputTokens, r.OutputTokens
 	}
 	return 0, 0
@@ -550,7 +550,7 @@ func fromMap(m map[string]any, out any) error {
 	return json.Unmarshal(b, out)
 }
 
-func varsMap(sess *loom.Session, key string) map[string]any {
+func varsMap(sess *noewright.Session, key string) map[string]any {
 	if m, ok := sess.State.Vars[key].(map[string]any); ok {
 		return m
 	}
@@ -564,9 +564,9 @@ func str(v any) string {
 	return ""
 }
 
-func freeText(action string) *loom.Action {
+func freeText(action string) *noewright.Action {
 	if action == "" {
 		return nil
 	}
-	return &loom.Action{Kind: loom.ActionFreeText, Payload: map[string]any{"text": action}}
+	return &noewright.Action{Kind: noewright.ActionFreeText, Payload: map[string]any{"text": action}}
 }

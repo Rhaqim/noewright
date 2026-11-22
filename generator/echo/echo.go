@@ -8,10 +8,10 @@ import (
 	"context"
 	"fmt"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
-// Generator implements loom.Generator and loom.StreamingGenerator.
+// Generator implements noewright.Generator and noewright.StreamingGenerator.
 // It always succeeds, returning the user prompt as the generated content.
 type Generator struct {
 	// Prefix is prepended to every response (optional).
@@ -23,32 +23,32 @@ func New(prefix string) *Generator {
 	return &Generator{Prefix: prefix}
 }
 
-func (g *Generator) Modality() loom.Modality { return loom.ModalityText }
+func (g *Generator) Modality() noewright.Modality { return noewright.ModalityText }
 
 // Generate immediately returns the user prompt as a TextResult.
-func (g *Generator) Generate(_ context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g *Generator) Generate(_ context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	content := req.UserPrompt
 	if g.Prefix != "" {
 		content = fmt.Sprintf("%s %s", g.Prefix, content)
 	}
-	return loom.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4), nil
+	return noewright.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4), nil
 }
 
 // GenerateStream streams the response word-by-word for demonstration purposes.
-func (g *Generator) GenerateStream(_ context.Context, req loom.GenerateRequest) (<-chan loom.Chunk, <-chan loom.Result, error) {
+func (g *Generator) GenerateStream(_ context.Context, req noewright.GenerateRequest) (<-chan noewright.Chunk, <-chan noewright.Result, error) {
 	content := req.UserPrompt
 	if g.Prefix != "" {
 		content = fmt.Sprintf("%s %s", g.Prefix, content)
 	}
 
-	chunks := make(chan loom.Chunk, 8)
-	results := make(chan loom.Result, 1)
+	chunks := make(chan noewright.Chunk, 8)
+	results := make(chan noewright.Result, 1)
 
 	go func() {
 		defer close(chunks)
 		defer close(results)
-		chunks <- loom.Chunk{Content: content}
-		results <- loom.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4)
+		chunks <- noewright.Chunk{Content: content}
+		results <- noewright.NewTextResult(content, "stop", len(req.UserPrompt)/4, len(content)/4)
 	}()
 
 	return chunks, results, nil

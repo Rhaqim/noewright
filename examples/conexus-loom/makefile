@@ -1,7 +1,7 @@
 .PHONY: run
 
-run: ## Run the loom-cli binary
+run: ## Run the noewright binary
 	go run ./cmd/play/
 
-transcript: ## Run the loom-cli binary with transcript
+transcript: ## Run the noewright binary with transcript
 	go run ./cmd/play/ -transcript playthrough.eval.md

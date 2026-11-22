@@ -8,8 +8,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/harness"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/harness"
 )
 
 // -----------------------------------------------------------------------
@@ -52,12 +52,12 @@ func loadSeedFile(path string) (*seedFile, error) {
 	return &sf, nil
 }
 
-func runSeed(ctx context.Context, e *loom.Engine, sf *seedFile) error {
+func runSeed(ctx context.Context, e *noewright.Engine, sf *seedFile) error {
 	for _, sp := range sf.Prompts {
-		p := &loom.Prompt{
+		p := &noewright.Prompt{
 			Slug:     sp.Slug,
 			Version:  sp.Version,
-			Kind:     loom.PromptKind(sp.Kind),
+			Kind:     noewright.PromptKind(sp.Kind),
 			Category: sp.Category,
 			Body:     sp.Body,
 			Notes:    sp.Notes,
@@ -72,11 +72,11 @@ func runSeed(ctx context.Context, e *loom.Engine, sf *seedFile) error {
 		fmt.Printf("  seeded prompt %s@%d\n", sp.Slug, sp.Version)
 	}
 	for _, sa := range sf.Agents {
-		a := &loom.Agent{
+		a := &noewright.Agent{
 			Slug:          sa.Slug,
 			Version:       sa.Version,
 			Category:      sa.Category,
-			Modal:         loom.Modality(sa.Modal),
+			Modal:         noewright.Modality(sa.Modal),
 			GeneratorSlug: sa.GeneratorSlug,
 		}
 		if err := e.Agents().Create(ctx, a); err != nil {
@@ -108,8 +108,8 @@ type yamlTestPlan struct {
 	Name     string                `yaml:"name"`
 	Session  harness.SessionScript `yaml:"session"`
 	Variants struct {
-		Providers     []string         `yaml:"providers"`
-		SystemPrompts []loom.PromptRef `yaml:"system_prompts"`
+		Providers     []string              `yaml:"providers"`
+		SystemPrompts []noewright.PromptRef `yaml:"system_prompts"`
 	} `yaml:"variants"`
 }
 
@@ -131,7 +131,7 @@ func loadTestPlan(path string) (*harness.TestPlan, error) {
 		},
 		// Built-in assertion: all results must be ready.
 		Assertions: []harness.Assertion{
-			harness.HasStatus(loom.ResultStatusReady),
+			harness.HasStatus(noewright.ResultStatusReady),
 		},
 	}
 	return plan, nil

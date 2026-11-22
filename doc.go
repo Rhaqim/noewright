@@ -11,4 +11,4 @@
 // notice. See aliases.go for the generated re-export surface.
 //
 //go:generate go run ./internal/tools/facadegen internal/engine aliases.go
-package loom
+package noewright

@@ -16,7 +16,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright/schema"
 )
 
 // pricedEngine is reproEngine with a pricing table.

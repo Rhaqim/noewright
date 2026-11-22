@@ -17,10 +17,10 @@ down: ## Stop and remove containers
 	docker compose down
 
 migrate: ## Apply Loom schema to the database
-	go run ./cmd/loom-cli migrate
+	go run ./cmd/noewright migrate
 
 seed: ## Seed example agents and prompts
-	go run ./cmd/loom-cli seed examples/story/seed.yaml
+	go run ./cmd/noewright seed examples/story/seed.yaml
 
 example: ## Run the example story application
 	go run ./examples/story
@@ -74,8 +74,8 @@ check: check-facade ## Run non-DB checks: facade sync, vet, build, race tests (n
 release: ## Tag loom (and generator/anthropic if it changed) as VERSION=vX.Y.Z on main; prints the push command
 	@./scripts/release.sh "$(VERSION)"
 
-build: ## Build the loom-cli binary
-	go build -o bin/loom-cli ./cmd/loom-cli
+build: ## Build the noewright binary
+	go build -o bin/noewright ./cmd/noewright
 
 clean: ## Remove build artefacts
 	rm -rf bin/

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # release.sh VERSION — cut a loom release (run via `make release VERSION=v0.0.3`).
 #
-# loom is two Go modules: the root (github.com/rhaqim/loom) and
-# generator/anthropic (github.com/rhaqim/loom/generator/anthropic), which
+# loom is two Go modules: the root (github.com/rhaqim/noewright) and
+# generator/anthropic (github.com/rhaqim/noewright/generator/anthropic), which
 # requires loom. Both are released from ONE commit:
 #
 #   1. If generator/anthropic changed since its last tag, its go.mod is pointed
@@ -48,7 +48,7 @@ echo "release: running make check"
 make check >/dev/null || die "make check failed; nothing was changed"
 
 if [ "$release_gen" = 1 ]; then
-  (cd "$GEN" && go mod edit -require="github.com/rhaqim/loom@$VERSION")
+  (cd "$GEN" && go mod edit -require="github.com/rhaqim/noewright@$VERSION")
   if [ -n "$(git status --porcelain -- "$GEN/go.mod")" ]; then
     git add "$GEN/go.mod"
     git commit -q -m "Release $VERSION: $GEN requires loom $VERSION"

@@ -22,12 +22,12 @@ import (
 	"github.com/rhaqim/conexus-loom/adapters"
 	"github.com/rhaqim/conexus-loom/engine"
 	"github.com/rhaqim/conexus-loom/narrative"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/evaluator/stub"
-	"github.com/rhaqim/loom/evaluator/typesafe"
-	"github.com/rhaqim/loom/generator/echo"
-	"github.com/rhaqim/loom/generator/openai"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/evaluator/stub"
+	"github.com/rhaqim/noewright/evaluator/typesafe"
+	"github.com/rhaqim/noewright/generator/echo"
+	"github.com/rhaqim/noewright/generator/openai"
+	"github.com/rhaqim/noewright/schema"
 	_ "modernc.org/sqlite"
 )
 
@@ -60,12 +60,12 @@ func main() {
 	// configured with any generator, and nil simply leaves the feature off.
 	evalr := pickEvaluator(log)
 
-	le, err := loom.New(loom.Config{
+	le, err := noewright.New(noewright.Config{
 		DB:         db,
-		Dialect:    loom.DialectSQLite,
-		Cache:      loom.NewInProcessCache(),
+		Dialect:    noewright.DialectSQLite,
+		Cache:      noewright.NewInProcessCache(),
 		Logger:     log,
-		Generators: map[string]loom.Generator{narrative.GenText: gen},
+		Generators: map[string]noewright.Generator{narrative.GenText: gen},
 		Pricing:    adapters.OpenAIPricing(), // per-model cost; unknown models fall back
 		Evaluator:  evalr,                    // experimental; nil = subsystem off
 	})
@@ -213,7 +213,7 @@ func play(ctx context.Context, cx *engine.Conexus, storyID uuid.UUID, tx *Transc
 // pickGenerator returns the text generator and whether it is a real LLM provider
 // (real => enable schema validation; the stub's reduced output can't satisfy the
 // full v2 schemas).
-func pickGenerator(log adapters.StdLogger) (loom.Generator, bool) {
+func pickGenerator(log adapters.StdLogger) (noewright.Generator, bool) {
 	switch adapters.Getenv("CONEXUS_PROVIDER", "openai") {
 	case "stub":
 		log.Info("provider", "stub", "note", "offline canned responses")
@@ -244,7 +244,7 @@ func pickGenerator(log adapters.StdLogger) (loom.Generator, bool) {
 // TYPESAFE_API_KEY selects the real thing. CONEXUS_EVALUATOR=stub forces the
 // offline stub, whose canned answers keep a gated pipeline running end to end
 // with no credentials — the evaluator-side counterpart to CONEXUS_PROVIDER=stub.
-func pickEvaluator(log adapters.StdLogger) loom.Evaluator {
+func pickEvaluator(log adapters.StdLogger) noewright.Evaluator {
 	switch adapters.Getenv("CONEXUS_EVALUATOR", "") {
 	case "off":
 		return nil

@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/schema"
 	_ "modernc.org/sqlite"
 )
 
@@ -27,8 +27,8 @@ func TestSessionUpdateOptimisticConcurrencySQLite(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{"g": flowStubGen{}}})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{"g": flowStubGen{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -50,17 +50,17 @@ func TestSessionUpdateOptimisticConcurrencyPostgres(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectPostgres).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectPostgres,
-		Generators: map[string]loom.Generator{"g": flowStubGen{}}})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectPostgres,
+		Generators: map[string]noewright.Generator{"g": flowStubGen{}}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sessionOptimisticConcurrency(t, e)
 }
 
-func sessionOptimisticConcurrency(t *testing.T, e *loom.Engine) {
+func sessionOptimisticConcurrency(t *testing.T, e *noewright.Engine) {
 	ctx := context.Background()
-	sess := &loom.Session{PlatformID: "p", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "p", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := e.Sessions().Create(ctx, sess); err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func sessionOptimisticConcurrency(t *testing.T, e *loom.Engine) {
 
 	// The stale second writer must be rejected, not silently clobber a's write.
 	b.State.Vars = map[string]any{"who": "b"}
-	if err := e.Sessions().Update(ctx, b); !errors.Is(err, loom.ErrSessionConflict) {
+	if err := e.Sessions().Update(ctx, b); !errors.Is(err, noewright.ErrSessionConflict) {
 		t.Fatalf("update b err = %v, want ErrSessionConflict", err)
 	}
 
@@ -135,7 +135,7 @@ func sessionOptimisticConcurrency(t *testing.T, e *loom.Engine) {
 		t.Fatal(err)
 	}
 	cur.State.Vars = map[string]any{"who": "b4"}
-	if err := e.Sessions().Update(ctx, cur); !errors.Is(err, loom.ErrNotFound) {
+	if err := e.Sessions().Update(ctx, cur); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("update of a discarded session err = %v, want ErrNotFound", err)
 	}
 }

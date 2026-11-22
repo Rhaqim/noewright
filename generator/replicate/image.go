@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 const defaultBaseURL = "https://api.replicate.com/v1"
@@ -35,11 +35,11 @@ func truncErr(b []byte) []byte {
 	return b
 }
 
-// ImageGenerator implements loom.Generator for Replicate image models.
+// ImageGenerator implements noewright.Generator for Replicate image models.
 // Generation is asynchronous: Generate returns a PendingResult and Poll
 // resolves it once the prediction completes.
 // ImageGenerator is an async generator: Generate submits the job, Poll resolves it.
-var _ loom.AsyncGenerator = (*ImageGenerator)(nil)
+var _ noewright.AsyncGenerator = (*ImageGenerator)(nil)
 
 type ImageGenerator struct {
 	apiKey  string
@@ -58,11 +58,11 @@ func NewImageGenerator(apiKey, model string) *ImageGenerator {
 	}
 }
 
-func (g *ImageGenerator) Modality() loom.Modality { return loom.ModalityImage }
+func (g *ImageGenerator) Modality() noewright.Modality { return noewright.ModalityImage }
 
 // Generate submits an image prediction to Replicate and returns a PendingResult.
 // The task handle ID is the Replicate prediction ID.
-func (g *ImageGenerator) Generate(ctx context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g *ImageGenerator) Generate(ctx context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	payload := map[string]any{
 		"version": g.model,
 		"input":   map[string]any{"prompt": req.UserPrompt},
@@ -77,17 +77,17 @@ func (g *ImageGenerator) Generate(ctx context.Context, req loom.GenerateRequest)
 		return nil, err
 	}
 
-	handle := &loom.TaskHandle{
+	handle := &noewright.TaskHandle{
 		ID:       uuid.New(),
 		Provider: "replicate",
 		Handle:   predID,
 	}
-	return loom.NewPendingResult(loom.ModalityImage, handle), nil
+	return noewright.NewPendingResult(noewright.ModalityImage, handle), nil
 }
 
 // Poll fetches the prediction status from Replicate and returns the final
 // ImageResult once it succeeds (or an error on failure/timeout).
-func (g *ImageGenerator) Poll(ctx context.Context, handle loom.TaskHandle) (loom.Result, error) {
+func (g *ImageGenerator) Poll(ctx context.Context, handle noewright.TaskHandle) (noewright.Result, error) {
 	pred, err := g.getPrediction(ctx, handle.Handle)
 	if err != nil {
 		return nil, err
@@ -98,12 +98,12 @@ func (g *ImageGenerator) Poll(ctx context.Context, handle loom.TaskHandle) (loom
 		if len(pred.Output) == 0 {
 			return nil, fmt.Errorf("replicate: no output URLs")
 		}
-		return loom.NewImageResult(pred.Output[0], "", 0, 0), nil
+		return noewright.NewImageResult(pred.Output[0], "", 0, 0), nil
 	case "failed", "canceled":
 		return nil, fmt.Errorf("replicate: prediction %s: %s", pred.ID, pred.Error)
 	default:
 		// still processing
-		return loom.NewPendingResult(loom.ModalityImage, &handle), nil
+		return noewright.NewPendingResult(noewright.ModalityImage, &handle), nil
 	}
 }
 

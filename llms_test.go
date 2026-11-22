@@ -1,10 +1,10 @@
-package loom_test
+package noewright_test
 
 // Guards llms.txt (the AI-oriented guide) against API drift: every `loom.<Name>`
 // it references must still be a real exported symbol of the public facade. When
 // this fails, a symbol in llms.txt was renamed or removed — fix the doc.
 //
-// Only top-level `loom.X` references are checked (types/funcs/consts/vars);
+// Only top-level `noewright.X` references are checked (types/funcs/consts/vars);
 // method and field accesses (e.g. e.RunStep, req.Overrides) and subpackage
 // references (openai.NewChatGenerator) are out of scope.
 

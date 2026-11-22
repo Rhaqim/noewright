@@ -129,7 +129,7 @@ var ErrNotFound = errors.New("loom: not found")
 
 // NotFoundError identifies which entity was missing and by what key. It unwraps
 // to ErrNotFound, so both errors.Is(err, ErrNotFound) and
-// errors.As(err, &loom.NotFoundError{}) work.
+// errors.As(err, &noewright.NotFoundError{}) work.
 type NotFoundError struct {
 	Kind string // "agent", "prompt", "session", "budget", "response_format"
 	Key  string // the lookup key: slug, "slug@vN", or a UUID
@@ -228,7 +228,7 @@ const (
 )
 
 // GenerationError is returned when a generator fails to produce a usable result.
-// Inspect it with errors.As(err, &loom.GenerationError{}) and switch on Kind.
+// Inspect it with errors.As(err, &noewright.GenerationError{}) and switch on Kind.
 type GenerationError struct {
 	Kind     GenerationErrorKind
 	Provider string // generator slug, when known

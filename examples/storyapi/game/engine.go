@@ -8,11 +8,11 @@ import (
 	"os"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/generator/anthropic"
-	"github.com/rhaqim/loom/generator/echo"
-	"github.com/rhaqim/loom/generator/openai"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/generator/anthropic"
+	"github.com/rhaqim/noewright/generator/echo"
+	"github.com/rhaqim/noewright/generator/openai"
+	"github.com/rhaqim/noewright/schema"
 	"github.com/rhaqim/story-api/domain"
 	"github.com/rhaqim/story-api/store"
 )
@@ -31,22 +31,22 @@ type PlayResult struct {
 	Err       error
 }
 
-// Engine wraps loom.Engine and adds story-API orchestration.
+// Engine wraps noewright.Engine and adds story-API orchestration.
 type Engine struct {
-	Loom  *loom.Engine
+	Loom  *noewright.Engine
 	Store *store.Store
 }
 
 // New creates a story Engine.
 func New(ctx context.Context, db *sql.DB, st *store.Store) (*Engine, error) {
-	cfg := loom.Config{
+	cfg := noewright.Config{
 		DB:           db,
-		Dialect:      loom.DialectPostgres,
+		Dialect:      noewright.DialectPostgres,
 		SchemaPrefix: loomPrefix,
 		Generators:   availableGenerators(),
-		Cache:        loom.NewInProcessCache(),
+		Cache:        noewright.NewInProcessCache(),
 	}
-	e, err := loom.New(cfg)
+	e, err := noewright.New(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("loom engine: %w", err)
 	}
@@ -69,8 +69,8 @@ func BestGeneratorSlug() string {
 	return "echo"
 }
 
-func availableGenerators() map[string]loom.Generator {
-	gens := map[string]loom.Generator{
+func availableGenerators() map[string]noewright.Generator {
+	gens := map[string]noewright.Generator{
 		"echo": echo.New("[Narrator]"),
 	}
 	if key := os.Getenv("OPENAI_API_KEY"); key != "" {
@@ -89,10 +89,10 @@ func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agent
 	sysSlug := "narrator-sys-" + topic.Slug
 
 	// System prompt.
-	sysPrompt := &loom.Prompt{
+	sysPrompt := &noewright.Prompt{
 		Slug:     sysSlug,
 		Version:  1,
-		Kind:     loom.PromptKindSystem,
+		Kind:     noewright.PromptKindSystem,
 		Category: "story-api",
 		Body:     SystemPrompt(topic.Name, topic.Genre),
 		Notes:    "Auto-seeded for topic: " + topic.Name,
@@ -106,10 +106,10 @@ func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agent
 	}
 
 	// Shared user template.
-	userPrompt := &loom.Prompt{
+	userPrompt := &noewright.Prompt{
 		Slug:     userPromptSlug,
 		Version:  userPromptVer,
-		Kind:     loom.PromptKindUserTemplate,
+		Kind:     noewright.PromptKindUserTemplate,
 		Category: "story-api",
 		Body:     UserTemplate(),
 		Notes:    "Shared story-api user template — injects history and reader action",
@@ -123,11 +123,11 @@ func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agent
 	}
 
 	// Narrator agent.
-	agent := &loom.Agent{
+	agent := &noewright.Agent{
 		Slug:           agentSlug,
 		Version:        1,
 		Category:       "story-api",
-		Modal:          loom.ModalityText,
+		Modal:          noewright.ModalityText,
 		GeneratorSlug:  BestGeneratorSlug(),
 		SystemPromptID: sp.ID,
 		UserTemplateID: ut.ID,
@@ -140,7 +140,7 @@ func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agent
 }
 
 // StartSession loads or creates the loom Session for a story.
-func (e *Engine) StartSession(ctx context.Context, story *domain.Story, platformID string) (*loom.Session, error) {
+func (e *Engine) StartSession(ctx context.Context, story *domain.Story, platformID string) (*noewright.Session, error) {
 	if story.LoomSessionID != "" {
 		sessID, err := uuid.Parse(story.LoomSessionID)
 		if err != nil {
@@ -153,11 +153,11 @@ func (e *Engine) StartSession(ctx context.Context, story *domain.Story, platform
 		return sess, nil
 	}
 
-	sess := &loom.Session{
+	sess := &noewright.Session{
 		PlatformID: platformID,
 		Tags:       []string{"story-api:true", "story:" + story.ID.String()},
-		State: loom.State{
-			Modality: loom.ModalityText,
+		State: noewright.State{
+			Modality: noewright.ModalityText,
 			Vars:     map[string]any{},
 		},
 	}
@@ -173,11 +173,11 @@ func (e *Engine) StartSession(ctx context.Context, story *domain.Story, platform
 }
 
 // Play executes one synchronous reader turn and returns the narrator's response.
-func (e *Engine) Play(ctx context.Context, sess *loom.Session, agentSlug, readerInput string) (*PlayResult, error) {
-	step, err := e.Loom.RunStep(ctx, sess, loom.StepRequest{
+func (e *Engine) Play(ctx context.Context, sess *noewright.Session, agentSlug, readerInput string) (*PlayResult, error) {
+	step, err := e.Loom.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug: agentSlug,
-		Action: &loom.Action{
-			Kind:    loom.ActionFreeText,
+		Action: &noewright.Action{
+			Kind:    noewright.ActionFreeText,
 			Payload: map[string]any{"text": readerInput},
 		},
 	})
@@ -186,7 +186,7 @@ func (e *Engine) Play(ctx context.Context, sess *loom.Session, agentSlug, reader
 	}
 
 	response := ""
-	if tr, ok := step.Result.(*loom.TextResult); ok {
+	if tr, ok := step.Result.(*noewright.TextResult); ok {
 		response = tr.Content
 	}
 
@@ -200,8 +200,8 @@ func (e *Engine) Play(ctx context.Context, sess *loom.Session, agentSlug, reader
 // PlayStream executes one reader turn with streaming.
 // Chunks arrive on the first channel; the final PlayResult on the second.
 // The caller must drain both channels.
-func (e *Engine) PlayStream(ctx context.Context, sess *loom.Session, agentSlug, readerInput string) (<-chan loom.Chunk, <-chan *PlayResult) {
-	chunks := make(chan loom.Chunk, 64)
+func (e *Engine) PlayStream(ctx context.Context, sess *noewright.Session, agentSlug, readerInput string) (<-chan noewright.Chunk, <-chan *PlayResult) {
+	chunks := make(chan noewright.Chunk, 64)
 	result := make(chan *PlayResult, 1)
 
 	go func() {
@@ -209,13 +209,13 @@ func (e *Engine) PlayStream(ctx context.Context, sess *loom.Session, agentSlug, 
 		defer close(result)
 
 		var streamed string
-		step, err := e.Loom.RunStep(ctx, sess, loom.StepRequest{
+		step, err := e.Loom.RunStep(ctx, sess, noewright.StepRequest{
 			AgentSlug: agentSlug,
-			Action: &loom.Action{
-				Kind:    loom.ActionFreeText,
+			Action: &noewright.Action{
+				Kind:    noewright.ActionFreeText,
 				Payload: map[string]any{"text": readerInput},
 			},
-			OnChunk: func(c loom.Chunk) {
+			OnChunk: func(c noewright.Chunk) {
 				chunks <- c
 				streamed += c.Content
 			},
@@ -227,7 +227,7 @@ func (e *Engine) PlayStream(ctx context.Context, sess *loom.Session, agentSlug, 
 
 		response := streamed
 		if response == "" {
-			if tr, ok := step.Result.(*loom.TextResult); ok {
+			if tr, ok := step.Result.(*noewright.TextResult); ok {
 				response = tr.Content
 			}
 		}
@@ -243,7 +243,7 @@ func (e *Engine) PlayStream(ctx context.Context, sess *loom.Session, agentSlug, 
 }
 
 // TurnsFromSession reconstructs Turn objects from a loom session's history.
-func TurnsFromSession(sess *loom.Session) []domain.Turn {
+func TurnsFromSession(sess *noewright.Session) []domain.Turn {
 	turns := make([]domain.Turn, 0, len(sess.History))
 	for _, step := range sess.History {
 		t := domain.Turn{
@@ -258,7 +258,7 @@ func TurnsFromSession(sess *loom.Session) []domain.Turn {
 				}
 			}
 		}
-		if tr, ok := step.Result.(*loom.TextResult); ok {
+		if tr, ok := step.Result.(*noewright.TextResult); ok {
 			t.DMResponse = tr.Content
 		}
 		turns = append(turns, t)
@@ -299,7 +299,7 @@ func SeedDefaultTopics(ctx context.Context, st *store.Store, e *Engine) error {
 
 // appendHistory maintains a rolling text log of the conversation in
 // session.State.Vars["history"], capped at historyMaxChars.
-func appendHistory(sess *loom.Session, readerInput, response string) {
+func appendHistory(sess *noewright.Session, readerInput, response string) {
 	existing := ""
 	if h, ok := sess.State.Vars["history"].(string); ok {
 		existing = h

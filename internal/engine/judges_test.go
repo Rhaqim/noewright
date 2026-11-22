@@ -4,32 +4,32 @@ import (
 	"context"
 	"testing"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // jsonGen returns a fixed payload as text, standing in for a judge model.
 type jsonGen struct{ payload string }
 
-func (jsonGen) Modality() loom.Modality { return loom.ModalityText }
-func (g jsonGen) Generate(context.Context, loom.GenerateRequest) (loom.Result, error) {
-	return loom.NewTextResult(g.payload, "stop", 1, 1), nil
+func (jsonGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (g jsonGen) Generate(context.Context, noewright.GenerateRequest) (noewright.Result, error) {
+	return noewright.NewTextResult(g.payload, "stop", 1, 1), nil
 }
 
 // imageGen produces a non-text result, to exercise the adapter's type guard.
 type imageGen struct{}
 
-func (imageGen) Modality() loom.Modality { return loom.ModalityImage }
-func (imageGen) Generate(context.Context, loom.GenerateRequest) (loom.Result, error) {
-	return loom.NewImageResult("http://x/y.png", "p", 8, 8), nil
+func (imageGen) Modality() noewright.Modality { return noewright.ModalityImage }
+func (imageGen) Generate(context.Context, noewright.GenerateRequest) (noewright.Result, error) {
+	return noewright.NewImageResult("http://x/y.png", "p", 8, 8), nil
 }
 
 // TestLLMRubricJudgeOverGenerator wires the real rubric judge to a text
 // generator through the engine's adapter and checks the end-to-end verdict.
 func TestLLMRubricJudgeOverGenerator(t *testing.T) {
 	gen := jsonGen{payload: `{"scores":{"clarity":9},"explanations":{"clarity":"crisp"}}`}
-	j := loom.NewLLMRubricJudge("clarity-judge", gen)
+	j := noewright.NewLLMRubricJudge("clarity-judge", gen)
 
-	v, err := j.Score(context.Background(), loom.ScoreRequest{
+	v, err := j.Score(context.Background(), noewright.ScoreRequest{
 		Output:     "a sharp sentence",
 		Dimensions: []string{"clarity"},
 	})
@@ -44,7 +44,7 @@ func TestLLMRubricJudgeOverGenerator(t *testing.T) {
 // TestGeneratorCompleterRejectsNonText ensures the adapter fails clearly when
 // the backing generator is not text-modality.
 func TestGeneratorCompleterRejectsNonText(t *testing.T) {
-	c := loom.GeneratorCompleter(imageGen{})
+	c := noewright.GeneratorCompleter(imageGen{})
 	if _, err := c.Complete(context.Background(), "sys", "user"); err == nil {
 		t.Fatal("expected an error completing with a non-text generator")
 	}
@@ -54,22 +54,22 @@ func TestGeneratorCompleterRejectsNonText(t *testing.T) {
 // *TextResult. Both must error rather than panic in the adapter.
 type nilGen struct{}
 
-func (nilGen) Modality() loom.Modality { return loom.ModalityText }
-func (nilGen) Generate(context.Context, loom.GenerateRequest) (loom.Result, error) {
+func (nilGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (nilGen) Generate(context.Context, noewright.GenerateRequest) (noewright.Result, error) {
 	return nil, nil
 }
 
 type typedNilGen struct{}
 
-func (typedNilGen) Modality() loom.Modality { return loom.ModalityText }
-func (typedNilGen) Generate(context.Context, loom.GenerateRequest) (loom.Result, error) {
-	var tr *loom.TextResult
+func (typedNilGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (typedNilGen) Generate(context.Context, noewright.GenerateRequest) (noewright.Result, error) {
+	var tr *noewright.TextResult
 	return tr, nil
 }
 
 func TestGeneratorCompleterHandlesNilResult(t *testing.T) {
-	for name, g := range map[string]loom.Generator{"nil-interface": nilGen{}, "typed-nil": typedNilGen{}} {
-		c := loom.GeneratorCompleter(g)
+	for name, g := range map[string]noewright.Generator{"nil-interface": nilGen{}, "typed-nil": typedNilGen{}} {
+		c := noewright.GeneratorCompleter(g)
 		if _, err := c.Complete(context.Background(), "s", "u"); err == nil {
 			t.Fatalf("%s: expected an error, not a panic or empty success", name)
 		}

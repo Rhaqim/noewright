@@ -9,8 +9,8 @@ import (
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/schema"
 	_ "modernc.org/sqlite"
 )
 
@@ -28,8 +28,8 @@ func TestRegistryDeleteAndOwnerSQLite(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{"g": flowStubGen{}}, Cache: loom.NewInProcessCache()})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{"g": flowStubGen{}}, Cache: noewright.NewInProcessCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,15 +51,15 @@ func TestRegistryDeleteAndOwnerPostgres(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectPostgres).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectPostgres,
-		Generators: map[string]loom.Generator{"g": flowStubGen{}}, Cache: loom.NewInProcessCache()})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectPostgres,
+		Generators: map[string]noewright.Generator{"g": flowStubGen{}}, Cache: noewright.NewInProcessCache()})
 	if err != nil {
 		t.Fatal(err)
 	}
 	registryDeleteAndOwner(t, e)
 }
 
-func registryDeleteAndOwner(t *testing.T, e *loom.Engine) {
+func registryDeleteAndOwner(t *testing.T, e *noewright.Engine) {
 	t.Helper()
 	ctx := context.Background()
 	uniq := uuid.NewString()[:8]
@@ -67,7 +67,7 @@ func registryDeleteAndOwner(t *testing.T, e *loom.Engine) {
 
 	// --- owner round-trips on all three entities ---
 	aslug := "a-" + uniq
-	if err := e.Agents().Create(ctx, &loom.Agent{Slug: aslug, Owner: owner, Version: 1, Modal: loom.ModalityText, GeneratorSlug: "g"}); err != nil {
+	if err := e.Agents().Create(ctx, &noewright.Agent{Slug: aslug, Owner: owner, Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "g"}); err != nil {
 		t.Fatal(err)
 	}
 	a, err := e.Agents().Get(ctx, owner, aslug, 1) // also primes the cache
@@ -79,7 +79,7 @@ func registryDeleteAndOwner(t *testing.T, e *loom.Engine) {
 	}
 
 	pslug := "p-" + uniq
-	if err := e.Prompts().Create(ctx, &loom.Prompt{Slug: pslug, Owner: owner, Version: 1, Kind: loom.PromptKindSystem, Body: "x"}); err != nil {
+	if err := e.Prompts().Create(ctx, &noewright.Prompt{Slug: pslug, Owner: owner, Version: 1, Kind: noewright.PromptKindSystem, Body: "x"}); err != nil {
 		t.Fatal(err)
 	}
 	p, err := e.Prompts().Get(ctx, owner, pslug, 1)
@@ -91,7 +91,7 @@ func registryDeleteAndOwner(t *testing.T, e *loom.Engine) {
 	}
 
 	rfslug := "rf-" + uniq
-	rfRec := &loom.ResponseFormatRecord{Slug: rfslug, Owner: owner, Version: 1, Schema: map[string]any{"type": "object"}}
+	rfRec := &noewright.ResponseFormatRecord{Slug: rfslug, Owner: owner, Version: 1, Schema: map[string]any{"type": "object"}}
 	if err := e.ResponseFormats().Create(ctx, rfRec); err != nil {
 		t.Fatal(err)
 	}
@@ -106,13 +106,13 @@ func registryDeleteAndOwner(t *testing.T, e *loom.Engine) {
 	// --- another owner cannot reach these records ---
 	// The reads above primed the cache; a cache key that dropped the owner would
 	// serve those same rows here, so this also guards the cache, not just the SQL.
-	if _, err := e.Agents().Get(ctx, "other", aslug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Agents().Get(ctx, "other", aslug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("agent leaked across owners, got %v", err)
 	}
-	if _, err := e.Prompts().Get(ctx, "other", pslug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Prompts().Get(ctx, "other", pslug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("prompt leaked across owners, got %v", err)
 	}
-	if _, err := e.ResponseFormats().Get(ctx, "other", rfslug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.ResponseFormats().Get(ctx, "other", rfslug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("response format leaked across owners, got %v", err)
 	}
 	if as, err := e.Agents().List(ctx, "other", ""); err != nil || len(as) != 0 {
@@ -128,23 +128,23 @@ func registryDeleteAndOwner(t *testing.T, e *loom.Engine) {
 	if err := e.Agents().Delete(ctx, owner, aslug, 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Agents().Get(ctx, owner, aslug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Agents().Get(ctx, owner, aslug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("agent: expected ErrNotFound after delete (stale cache?), got %v", err)
 	}
 	if err := e.Prompts().Delete(ctx, owner, pslug, 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Prompts().Get(ctx, owner, pslug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.Prompts().Get(ctx, owner, pslug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("prompt: expected ErrNotFound after delete (stale cache?), got %v", err)
 	}
 	if err := e.ResponseFormats().Delete(ctx, owner, rfslug, 1); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.ResponseFormats().Get(ctx, owner, rfslug, 1); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.ResponseFormats().Get(ctx, owner, rfslug, 1); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("response format: expected ErrNotFound after delete (stale cache?), got %v", err)
 	}
 	// The by-id cache primed via GetByID above must also be evicted.
-	if _, err := e.ResponseFormats().GetByID(ctx, rfRec.ID); !errors.Is(err, loom.ErrNotFound) {
+	if _, err := e.ResponseFormats().GetByID(ctx, rfRec.ID); !errors.Is(err, noewright.ErrNotFound) {
 		t.Fatalf("response format by-id: stale cache after delete, got %v", err)
 	}
 }

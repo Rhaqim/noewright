@@ -6,15 +6,15 @@ import (
 	"strings"
 	"testing"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/evaluator/stub"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/evaluator/stub"
+	"github.com/rhaqim/noewright/schema"
 	_ "modernc.org/sqlite"
 )
 
 // gateEngine builds a throwaway in-memory engine carrying ev. The semantic gate
 // only needs the engine to reach its Evaluator, so nothing is seeded.
-func gateEngine(t *testing.T, ev loom.Evaluator) *loom.Engine {
+func gateEngine(t *testing.T, ev noewright.Evaluator) *noewright.Engine {
 	t.Helper()
 	ctx := context.Background()
 	db, err := sql.Open("sqlite", "file:semantic_"+t.Name()+"?mode=memory&cache=shared")
@@ -26,7 +26,7 @@ func gateEngine(t *testing.T, ev loom.Evaluator) *loom.Engine {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{DB: db, Dialect: loom.DialectSQLite, Evaluator: ev})
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite, Evaluator: ev})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,12 +37,12 @@ func TestSemanticGateRetriesOnCliche(t *testing.T) {
 	ev := stub.New().WithNoul(qCliched, 0.92)
 	hook := SemanticQualityGate(gateEngine(t, ev), 1.0)
 
-	res := loom.NewTextResult("Some prose with no listed phrase in it at all.", "stop", 1, 1)
+	res := noewright.NewTextResult("Some prose with no listed phrase in it at all.", "stop", 1, 1)
 	_, err := hook(context.Background(), authorReq(""), res)
-	if !loom.IsRetry(err) {
+	if !noewright.IsRetry(err) {
 		t.Fatalf("a cliché verdict should trigger a retry, got %v", err)
 	}
-	ann, _ := loom.RetryAnnotationFrom(err)
+	ann, _ := noewright.RetryAnnotationFrom(err)
 	if !strings.Contains(ann.Reason, "clich") {
 		t.Errorf("retry reason = %q, want the cliché guidance", ann.Reason)
 	}
@@ -59,9 +59,9 @@ func TestSemanticGateRetriesOnRepetition(t *testing.T) {
 
 	prev := "She crossed the bridge at dawn and the city opened below her."
 	// Same scene, no shared trigrams — exactly what the Jaccard detector misses.
-	res := loom.NewTextResult("At first light the span carried her over, and beneath lay the whole town.", "stop", 1, 1)
+	res := noewright.NewTextResult("At first light the span carried her over, and beneath lay the whole town.", "stop", 1, 1)
 
-	if _, err := hook(context.Background(), authorReq(prev), res); !loom.IsRetry(err) {
+	if _, err := hook(context.Background(), authorReq(prev), res); !noewright.IsRetry(err) {
 		t.Fatalf("a repetition verdict should trigger a retry, got %v", err)
 	}
 	if _, err := StalenessHook(0)(context.Background(), authorReq(prev), res); err != nil {
@@ -75,7 +75,7 @@ func TestSemanticGateSkipsTheRepetitionQuestionOnTheFirstScene(t *testing.T) {
 	ev := stub.New()
 	hook := SemanticQualityGate(gateEngine(t, ev), 1.0)
 
-	res := loom.NewTextResult("The opening scene.", "stop", 1, 1)
+	res := noewright.NewTextResult("The opening scene.", "stop", 1, 1)
 	if _, err := hook(context.Background(), authorReq(""), res); err != nil {
 		t.Fatal(err)
 	}
@@ -93,11 +93,11 @@ func TestSemanticGateSkipsTheRepetitionQuestionOnTheFirstScene(t *testing.T) {
 
 func TestSemanticGateGradesQuality(t *testing.T) {
 	ctx := context.Background()
-	res := loom.NewTextResult("draft", "stop", 1, 1)
+	res := noewright.NewTextResult("draft", "stop", 1, 1)
 
 	// Below the bar: sent back.
 	low := stub.New().WithScore(qQuality, 0.4)
-	if _, err := SemanticQualityGate(gateEngine(t, low), 1.0)(ctx, authorReq(""), res); !loom.IsRetry(err) {
+	if _, err := SemanticQualityGate(gateEngine(t, low), 1.0)(ctx, authorReq(""), res); !noewright.IsRetry(err) {
 		t.Fatalf("a 0.4 draft should be sent back under a 1.0 bar, got %v", err)
 	}
 
@@ -121,7 +121,7 @@ func TestSemanticGateLeavesOtherAgentsAlone(t *testing.T) {
 
 	req := authorReq("")
 	req.AgentSlug = AgentLogician
-	if _, err := hook(context.Background(), req, loom.NewTextResult(`{"options":[]}`, "stop", 1, 1)); err != nil {
+	if _, err := hook(context.Background(), req, noewright.NewTextResult(`{"options":[]}`, "stop", 1, 1)); err != nil {
 		t.Fatalf("the Logician should pass through untouched: %v", err)
 	}
 	if n := len(ev.Calls()); n != 0 {
@@ -133,7 +133,7 @@ func TestSemanticGateIsInertWithoutAnEvaluator(t *testing.T) {
 	// The example must keep running for anyone with no TYPESAFE_API_KEY.
 	hook := SemanticQualityGate(gateEngine(t, nil), 1.0)
 	if _, err := hook(context.Background(), authorReq(""),
-		loom.NewTextResult("anything", "stop", 1, 1)); err != nil {
+		noewright.NewTextResult("anything", "stop", 1, 1)); err != nil {
 		t.Fatalf("the gate should be inert with no evaluator configured: %v", err)
 	}
 }

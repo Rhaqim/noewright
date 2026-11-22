@@ -17,7 +17,7 @@ This document is the plan to fix that **without breaking downstream consumers**.
 In Go, **folder = package**. "Move files into folders" literally means "split one
 package into several," which breaks two things:
 
-1. **Consumers** who write `loom.Engine`, `loom.Session`, `loom.New(...)`.
+1. **Consumers** who write `noewright.Engine`, `noewright.Session`, `noewright.New(...)`.
 2. **Internal cross-references** — every `s.e.*` service call and every shared
    unexported helper.
 
@@ -36,15 +36,15 @@ Two facts about the current code make a clean reorganization feasible:
 ## The compatibility linchpin: type aliases
 
 `type Session = engine.Session` is the *identical* type, not a wrapper. So
-`res.(*loom.TextResult)`, `loom.Config{DB: db}`, and interface satisfaction all
+`res.(*noewright.TextResult)`, `noewright.Config{DB: db}`, and interface satisfaction all
 keep working across a package boundary. This is what lets the implementation move
-into `internal/` while `loom.X` stays valid for every consumer.
+into `internal/` while `noewright.X` stays valid for every consumer.
 
 ```go
 // loom/loom.go — the facade (Phase 1)
-package loom
+package noewright
 
-import "github.com/rhaqim/loom/internal/engine"
+import "github.com/rhaqim/noewright/internal/engine"
 
 type (
     Engine      = engine.Engine        // methods, fields, type assertions all carry over
@@ -172,7 +172,7 @@ only if/when desired; Phase 1 already delivers the encapsulation.
 - `facade_test.go` is the **drift guard**: it fails if any exported
   `internal/engine` symbol is missing from the facade. Verified it both passes on
   the current tree and fails when a new un-re-exported symbol is introduced.
-- Zero changes needed in `generator/*`, `harness`, `cmd/loom-cli`, or the three
+- Zero changes needed in `generator/*`, `harness`, `cmd/noewright`, or the three
   example modules — they import the facade and it re-exports everything they use.
   No import cycles (the engine imports `judge`/`gc`/`schema`, none of which import
   the facade; `generator`/`harness` import the facade, which the engine does not

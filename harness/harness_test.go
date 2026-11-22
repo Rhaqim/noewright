@@ -12,8 +12,8 @@ import (
 	"sync"
 	"testing"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/schema"
 
 	"github.com/google/uuid"
 	_ "modernc.org/sqlite"
@@ -22,9 +22,9 @@ import (
 // markerGen returns a fixed marker string so a test can tell which generator ran.
 type markerGen struct{ marker string }
 
-func (g markerGen) Modality() loom.Modality { return loom.ModalityText }
-func (g markerGen) Generate(context.Context, loom.GenerateRequest) (loom.Result, error) {
-	return loom.NewTextResult(g.marker, "stop", 1, 1), nil
+func (g markerGen) Modality() noewright.Modality { return noewright.ModalityText }
+func (g markerGen) Generate(context.Context, noewright.GenerateRequest) (noewright.Result, error) {
+	return noewright.NewTextResult(g.marker, "stop", 1, 1), nil
 }
 
 func TestExpandVariants(t *testing.T) {
@@ -46,7 +46,7 @@ func TestExpandVariants(t *testing.T) {
 	}
 
 	// Providers x Params -> cross product with params populated.
-	vs = expandVariants(VariantMatrix{Providers: []string{"a"}, Params: []loom.GenerateParams{{Temperature: 0.1}, {Temperature: 0.9}}})
+	vs = expandVariants(VariantMatrix{Providers: []string{"a"}, Params: []noewright.GenerateParams{{Temperature: 0.1}, {Temperature: 0.9}}})
 	if len(vs) != 2 || vs[0].Params == nil || vs[1].Params == nil {
 		t.Fatalf("params axis not expanded: %+v", vs)
 	}
@@ -55,7 +55,7 @@ func TestExpandVariants(t *testing.T) {
 	}
 
 	// SystemPrompts axis -> populated, params stay nil.
-	vs = expandVariants(VariantMatrix{Providers: []string{"a"}, SystemPrompts: []loom.PromptRef{{Slug: "p1"}, {Slug: "p2"}}})
+	vs = expandVariants(VariantMatrix{Providers: []string{"a"}, SystemPrompts: []noewright.PromptRef{{Slug: "p1"}, {Slug: "p2"}}})
 	if len(vs) != 2 || vs[0].SystemPrompt == nil || vs[0].SystemPrompt.Slug != "p1" {
 		t.Fatalf("system-prompt axis not expanded: %+v", vs)
 	}
@@ -90,10 +90,10 @@ func TestRunAppliesProviderOverride(t *testing.T) {
 	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
 		t.Fatal(err)
 	}
-	e, err := loom.New(loom.Config{
+	e, err := noewright.New(noewright.Config{
 		DB:      db,
-		Dialect: loom.DialectSQLite,
-		Generators: map[string]loom.Generator{
+		Dialect: noewright.DialectSQLite,
+		Generators: map[string]noewright.Generator{
 			"a": markerGen{"AAA"},
 			"b": markerGen{"BBB"},
 		},
@@ -102,16 +102,16 @@ func TestRunAppliesProviderOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Agent's default generator is "a"; the "b" variant must override it.
-	if err := e.Agents().Create(ctx, &loom.Agent{
-		ID: uuid.New(), Slug: "h-agent", Version: 1, Modal: loom.ModalityText, GeneratorSlug: "a",
+	if err := e.Agents().Create(ctx, &noewright.Agent{
+		ID: uuid.New(), Slug: "h-agent", Version: 1, Modal: noewright.ModalityText, GeneratorSlug: "a",
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	var mu sync.Mutex
 	var seen []string
-	collect := Custom("collect", func(step *loom.Step, result loom.Result) error {
-		if tr, ok := result.(*loom.TextResult); ok {
+	collect := Custom("collect", func(step *noewright.Step, result noewright.Result) error {
+		if tr, ok := result.(*noewright.TextResult); ok {
 			mu.Lock()
 			seen = append(seen, tr.Content)
 			mu.Unlock()

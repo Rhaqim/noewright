@@ -1,4 +1,4 @@
-// Package clitest contains integration tests for the loom-cli binary.
+// Package clitest contains integration tests for the noewright binary.
 // Each test builds the CLI binary once (TestMain) and then exercises the
 // migrate, seed, and test subcommands against a real Postgres database.
 //
@@ -13,9 +13,9 @@ import (
 	"testing"
 )
 
-var cliBin string // path to the compiled loom-cli binary
+var cliBin string // path to the compiled noewright binary
 
-// TestMain compiles the loom-cli binary before any test runs.
+// TestMain compiles the noewright binary before any test runs.
 func TestMain(m *testing.M) {
 	dsn := os.Getenv("LOOM_DSN")
 	if dsn == "" {
@@ -23,22 +23,22 @@ func TestMain(m *testing.M) {
 		os.Exit(m.Run())
 	}
 
-	tmp, err := os.MkdirTemp("", "loom-cli-test-*")
+	tmp, err := os.MkdirTemp("", "noewright-test-*")
 	if err != nil {
 		panic("tmpdir: " + err.Error())
 	}
 	defer os.RemoveAll(tmp)
 
-	cliBin = filepath.Join(tmp, "loom-cli")
+	cliBin = filepath.Join(tmp, "noewright")
 
 	// Find the module root (three levels up from internal/clitest).
 	moduleRoot := filepath.Join("..", "..")
-	cmd := exec.Command("go", "build", "-o", cliBin, "./cmd/loom-cli")
+	cmd := exec.Command("go", "build", "-o", cliBin, "./cmd/noewright")
 	cmd.Dir = moduleRoot
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		panic("build loom-cli: " + err.Error())
+		panic("build noewright: " + err.Error())
 	}
 
 	os.Exit(m.Run())
@@ -212,7 +212,7 @@ agents:
 `
 
 // passingPlanYAML runs the echo generator via the cli-test-agent.
-// The echo generator is wired into the CLI via cliGenerators() in cmd/loom-cli/main.go.
+// The echo generator is wired into the CLI via cliGenerators() in cmd/noewright/main.go.
 const passingPlanYAML = `
 name: cli-smoke-pass
 session:

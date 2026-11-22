@@ -15,7 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 const defaultBaseURL = "https://api.meshy.ai"
@@ -42,7 +42,7 @@ const refinePrefix = "refine_"
 // in the text flow, keys prefixed "refine_" go to the refine stage instead of
 // the preview (prefix stripped), e.g. "refine_enable_pbr" or
 // "refine_texture_prompt".
-var _ loom.AsyncGenerator = (*Model3DGenerator)(nil)
+var _ noewright.AsyncGenerator = (*Model3DGenerator)(nil)
 
 type Model3DGenerator struct {
 	apiKey  string
@@ -67,11 +67,11 @@ func (g *Model3DGenerator) WithBaseURL(url string) *Model3DGenerator {
 	return &clone
 }
 
-func (g *Model3DGenerator) Modality() loom.Modality { return loom.ModalityModel3D }
+func (g *Model3DGenerator) Modality() noewright.Modality { return noewright.ModalityModel3D }
 
 // Generate submits a Meshy job. For image-to-3D, pass the externally reachable
 // image URL (or Meshy-supported data URI) in GenerateParams.Extra["image_url"].
-func (g *Model3DGenerator) Generate(ctx context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g *Model3DGenerator) Generate(ctx context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	payload := make(map[string]any, len(req.Params.Extra)+2)
 	refine := map[string]any{}
 	imageURL, _ := req.Params.Extra["image_url"].(string)
@@ -109,7 +109,7 @@ func (g *Model3DGenerator) Generate(ctx context.Context, req loom.GenerateReques
 	if err != nil {
 		return nil, err
 	}
-	return loom.NewPendingResult(loom.ModalityModel3D, &loom.TaskHandle{
+	return noewright.NewPendingResult(noewright.ModalityModel3D, &noewright.TaskHandle{
 		ID: uuid.New(), Provider: "meshy", Handle: handle,
 	}), nil
 }
@@ -149,7 +149,7 @@ func decodeHandle(h string) (kind, id string, refine map[string]any, err error) 
 
 // Poll resolves an image task directly. A text task that has completed its
 // preview transparently starts the Meshy refine stage, then resolves its GLB.
-func (g *Model3DGenerator) Poll(ctx context.Context, handle loom.TaskHandle) (loom.Result, error) {
+func (g *Model3DGenerator) Poll(ctx context.Context, handle noewright.TaskHandle) (noewright.Result, error) {
 	kind, id, refine, err := decodeHandle(handle.Handle)
 	if err != nil {
 		return nil, err
@@ -180,19 +180,19 @@ func (g *Model3DGenerator) Poll(ctx context.Context, handle loom.TaskHandle) (lo
 				return nil, err
 			}
 			handle.Handle = "refine:" + refineID
-			return loom.NewPendingResult(loom.ModalityModel3D, &handle), nil
+			return noewright.NewPendingResult(noewright.ModalityModel3D, &handle), nil
 		}
 		if task.ModelURLs.GLB == "" {
 			return nil, fmt.Errorf("meshy: task %s succeeded without a GLB URL", id)
 		}
-		return loom.NewModel3DResult(task.ModelURLs.GLB, "model/gltf-binary", task.ThumbnailURL, task.Prompt, 0, false), nil
+		return noewright.NewModel3DResult(task.ModelURLs.GLB, "model/gltf-binary", task.ThumbnailURL, task.Prompt, 0, false), nil
 	case "FAILED", "CANCELED":
 		if task.TaskError.Message != "" {
 			return nil, fmt.Errorf("meshy: task %s %s: %s", id, strings.ToLower(task.Status), task.TaskError.Message)
 		}
 		return nil, fmt.Errorf("meshy: task %s %s", id, strings.ToLower(task.Status))
 	default:
-		return loom.NewPendingResult(loom.ModalityModel3D, &handle), nil
+		return noewright.NewPendingResult(noewright.ModalityModel3D, &handle), nil
 	}
 }
 

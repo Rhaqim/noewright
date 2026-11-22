@@ -11,12 +11,12 @@ import (
 	"github.com/rhaqim/conexus-loom/domain"
 	"github.com/rhaqim/conexus-loom/narrative"
 	"github.com/rhaqim/conexus-loom/ports"
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // Service runs the migrate agent.
 type Service struct {
-	Loom    *loom.Engine
+	Loom    *noewright.Engine
 	Version int // migrate prompt/agent version
 	Log     ports.Logger
 }
@@ -25,11 +25,11 @@ type Service struct {
 func (s *Service) Migrate(ctx context.Context, blockText string) (domain.World, domain.Constitution, error) {
 	// A short-lived session so the one-shot migration step has somewhere to live
 	// (its cost is still tracked by loom under the "migration" platform id).
-	sess := &loom.Session{PlatformID: "migration", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "migration", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := s.Loom.Sessions().Create(ctx, sess); err != nil {
 		return domain.World{}, domain.Constitution{}, err
 	}
-	step, err := s.Loom.RunStep(ctx, sess, loom.StepRequest{
+	step, err := s.Loom.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug:    narrative.AgentMigrate,
 		AgentVersion: s.Version,
 		Inputs:       map[string]any{"block": blockText},

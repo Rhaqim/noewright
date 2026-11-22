@@ -20,9 +20,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/generator/meshy"
-	"github.com/rhaqim/loom/schema"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/generator/meshy"
+	"github.com/rhaqim/noewright/schema"
 	_ "modernc.org/sqlite"
 )
 
@@ -46,7 +46,7 @@ type storyAgent struct {
 	Slug     string
 	Name     string
 	Model    string
-	Modality loom.Modality
+	Modality noewright.Modality
 	// MaxPrompt caps the scene prompt for this agent. The Meshy agent uses
 	// Meshy's own limit because its user template passes the prompt through
 	// unwrapped.
@@ -57,7 +57,7 @@ type storyAgent struct {
 }
 
 type app struct {
-	engine *loom.Engine
+	engine *noewright.Engine
 	agents map[string]storyAgent
 	tmpl   *template.Template
 }
@@ -79,7 +79,7 @@ type output struct {
 	Text    string
 	URL     template.URL
 	Preview template.URL
-	World   []loom.WorldDelta
+	World   []noewright.WorldDelta
 	Pending bool
 	TaskID  string
 }
@@ -96,19 +96,19 @@ func main() {
 		log.Fatal(err)
 	}
 
-	gens := map[string]loom.Generator{
-		"local-narrator": localGenerator{modality: loom.ModalityText},
-		"local-image":    localGenerator{modality: loom.ModalityImage},
-		"local-audio":    localGenerator{modality: loom.ModalityAudio},
-		"local-video":    localGenerator{modality: loom.ModalityVideo},
-		"local-model3d":  localGenerator{modality: loom.ModalityModel3D},
-		"local-world":    localGenerator{modality: loom.ModalityWorld},
+	gens := map[string]noewright.Generator{
+		"local-narrator": localGenerator{modality: noewright.ModalityText},
+		"local-image":    localGenerator{modality: noewright.ModalityImage},
+		"local-audio":    localGenerator{modality: noewright.ModalityAudio},
+		"local-video":    localGenerator{modality: noewright.ModalityVideo},
+		"local-model3d":  localGenerator{modality: noewright.ModalityModel3D},
+		"local-world":    localGenerator{modality: noewright.ModalityWorld},
 	}
 	hasMeshy := os.Getenv("MESHY_API_KEY") != ""
 	if hasMeshy {
 		gens["meshy-3d"] = meshy.NewModel3DGenerator(os.Getenv("MESHY_API_KEY"))
 	}
-	a, err := newApp(ctx, db, gens, defaultAgents(hasMeshy), loom.PollerConfig{
+	a, err := newApp(ctx, db, gens, defaultAgents(hasMeshy), noewright.PollerConfig{
 		// Meshy's preview and refine stages each take minutes. Poll every 10s
 		// and allow 90 polls per stage (Loom resets the count when a job moves
 		// to its next stage), i.e. up to 15 minutes each.
@@ -125,9 +125,9 @@ func main() {
 }
 
 // newApp builds the engine, seeds the agents and parses the template.
-func newApp(ctx context.Context, db *sql.DB, gens map[string]loom.Generator, agents map[string]storyAgent, poller loom.PollerConfig) (*app, error) {
-	e, err := loom.New(loom.Config{
-		DB: db, Dialect: loom.DialectSQLite, Generators: gens,
+func newApp(ctx context.Context, db *sql.DB, gens map[string]noewright.Generator, agents map[string]storyAgent, poller noewright.PollerConfig) (*app, error) {
+	e, err := noewright.New(noewright.Config{
+		DB: db, Dialect: noewright.DialectSQLite, Generators: gens,
 		AsyncPoller: poller,
 		JobPricing:  map[string]float64{"meshy-3d": meshyJobUSD},
 	})
@@ -157,16 +157,16 @@ func (a *app) routes() http.Handler {
 
 func defaultAgents(hasMeshy bool) map[string]storyAgent {
 	agents := map[string]storyAgent{
-		"narrator":        {Slug: "narrator", Name: "Narrator", Model: "local-narrator", Modality: loom.ModalityText},
-		"concept-artist":  {Slug: "concept-artist", Name: "Concept artist", Model: "local-image", Modality: loom.ModalityImage},
-		"sound-mage":      {Slug: "sound-mage", Name: "Sound mage", Model: "local-audio", Modality: loom.ModalityAudio},
-		"cinematographer": {Slug: "cinematographer", Name: "Cinematographer", Model: "local-video", Modality: loom.ModalityVideo},
-		"asset-forger":    {Slug: "asset-forger", Name: "Asset forger", Model: "local-model3d", Modality: loom.ModalityModel3D},
-		"world-smith":     {Slug: "world-smith", Name: "World smith", Model: "local-world", Modality: loom.ModalityWorld},
+		"narrator":        {Slug: "narrator", Name: "Narrator", Model: "local-narrator", Modality: noewright.ModalityText},
+		"concept-artist":  {Slug: "concept-artist", Name: "Concept artist", Model: "local-image", Modality: noewright.ModalityImage},
+		"sound-mage":      {Slug: "sound-mage", Name: "Sound mage", Model: "local-audio", Modality: noewright.ModalityAudio},
+		"cinematographer": {Slug: "cinematographer", Name: "Cinematographer", Model: "local-video", Modality: noewright.ModalityVideo},
+		"asset-forger":    {Slug: "asset-forger", Name: "Asset forger", Model: "local-model3d", Modality: noewright.ModalityModel3D},
+		"world-smith":     {Slug: "world-smith", Name: "World smith", Model: "local-world", Modality: noewright.ModalityWorld},
 	}
 	if hasMeshy {
 		agents["meshy-forger"] = storyAgent{Slug: "meshy-forger", Name: "Meshy asset forger", Model: "meshy-3d",
-			Modality: loom.ModalityModel3D, MaxPrompt: meshy.MaxPromptChars, RawPrompt: true}
+			Modality: noewright.ModalityModel3D, MaxPrompt: meshy.MaxPromptChars, RawPrompt: true}
 	}
 	for slug, a := range agents {
 		if a.MaxPrompt == 0 {
@@ -185,21 +185,21 @@ func (a *app) seed(ctx context.Context) error {
 		if agent.RawPrompt {
 			userBody = "{{.Action.Payload.prompt}}"
 		}
-		sys, err := a.ensurePrompt(ctx, &loom.Prompt{Slug: agent.Slug + "-system", Version: 1, Kind: loom.PromptKindSystem,
+		sys, err := a.ensurePrompt(ctx, &noewright.Prompt{Slug: agent.Slug + "-system", Version: 1, Kind: noewright.PromptKindSystem,
 			Body: "You contribute " + string(agent.Modality) + " to a dark-fantasy science-fiction story."})
 		if err != nil {
 			return err
 		}
-		user, err := a.ensurePrompt(ctx, &loom.Prompt{Slug: agent.Slug + "-user", Version: 1, Kind: loom.PromptKindUserTemplate, Body: userBody})
+		user, err := a.ensurePrompt(ctx, &noewright.Prompt{Slug: agent.Slug + "-user", Version: 1, Kind: noewright.PromptKindUserTemplate, Body: userBody})
 		if err != nil {
 			return err
 		}
 		if _, err := a.engine.Agents().Get(ctx, "", agent.Slug, 1); err == nil {
 			continue
-		} else if !errors.Is(err, loom.ErrNotFound) {
+		} else if !errors.Is(err, noewright.ErrNotFound) {
 			return err
 		}
-		if err := a.engine.Agents().Create(ctx, &loom.Agent{Slug: agent.Slug, Version: 1, Modal: agent.Modality,
+		if err := a.engine.Agents().Create(ctx, &noewright.Agent{Slug: agent.Slug, Version: 1, Modal: agent.Modality,
 			GeneratorSlug: agent.Model, SystemPromptID: sys.ID, UserTemplateID: user.ID}); err != nil {
 			return err
 		}
@@ -207,12 +207,12 @@ func (a *app) seed(ctx context.Context) error {
 	return nil
 }
 
-func (a *app) ensurePrompt(ctx context.Context, p *loom.Prompt) (*loom.Prompt, error) {
+func (a *app) ensurePrompt(ctx context.Context, p *noewright.Prompt) (*noewright.Prompt, error) {
 	existing, err := a.engine.Prompts().Get(ctx, "", p.Slug, p.Version)
 	if err == nil {
 		return existing, nil
 	}
-	if !errors.Is(err, loom.ErrNotFound) {
+	if !errors.Is(err, noewright.ErrNotFound) {
 		return nil, err
 	}
 	return p, a.engine.Prompts().Create(ctx, p)
@@ -243,14 +243,14 @@ func (a *app) generate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	sess := &loom.Session{PlatformID: "media-story-web", State: loom.State{Modality: loom.ModalityText}}
+	sess := &noewright.Session{PlatformID: "media-story-web", State: noewright.State{Modality: noewright.ModalityText}}
 	if err := a.engine.Sessions().Create(ctx, sess); err != nil {
 		page.Error = err.Error()
 		a.render(w, page)
 		return
 	}
-	step, err := a.engine.RunStep(ctx, sess, loom.StepRequest{AgentSlug: agent.Slug, Action: &loom.Action{
-		Kind: loom.ActionFreeText, Payload: map[string]any{"prompt": page.Prompt},
+	step, err := a.engine.RunStep(ctx, sess, noewright.StepRequest{AgentSlug: agent.Slug, Action: &noewright.Action{
+		Kind: noewright.ActionFreeText, Payload: map[string]any{"prompt": page.Prompt},
 	}})
 	if err != nil {
 		page.Error = err.Error()
@@ -279,7 +279,7 @@ func (a *app) task(w http.ResponseWriter, r *http.Request) {
 	page.Selected = agent.Slug
 	status, result, err := a.engine.TaskStatus(r.Context(), id)
 	switch {
-	case errors.Is(err, loom.ErrNotFound):
+	case errors.Is(err, noewright.ErrNotFound):
 		w.WriteHeader(http.StatusNotFound)
 		page.Error = "Unknown task."
 	case err != nil:
@@ -315,24 +315,24 @@ func (a *app) render(w http.ResponseWriter, data pageData) {
 	}
 }
 
-func present(agent storyAgent, result loom.Result) *output {
-	out := &output{Agent: agent, Pending: result.Status() == loom.ResultStatusPending}
+func present(agent storyAgent, result noewright.Result) *output {
+	out := &output{Agent: agent, Pending: result.Status() == noewright.ResultStatusPending}
 	if th := result.TaskHandle(); th != nil {
 		out.TaskID = th.ID.String()
 	}
 	switch r := result.(type) {
-	case *loom.TextResult:
+	case *noewright.TextResult:
 		out.Text = r.Content
-	case *loom.ImageResult:
+	case *noewright.ImageResult:
 		out.URL = mediaURL(r.URL)
 		out.Preview = out.URL
-	case *loom.AudioResult:
+	case *noewright.AudioResult:
 		out.URL = mediaURL(r.URL)
-	case *loom.VideoResult:
+	case *noewright.VideoResult:
 		out.URL, out.Preview = mediaURL(r.URL), mediaURL(r.PreviewImage)
-	case *loom.Model3DResult:
+	case *noewright.Model3DResult:
 		out.URL, out.Preview = mediaURL(r.URL), mediaURL(r.PreviewImage)
-	case *loom.WorldResult:
+	case *noewright.WorldResult:
 		out.World = r.Deltas
 	}
 	return out
@@ -350,25 +350,25 @@ func mediaURL(s string) template.URL {
 	return ""
 }
 
-type localGenerator struct{ modality loom.Modality }
+type localGenerator struct{ modality noewright.Modality }
 
-func (g localGenerator) Modality() loom.Modality { return g.modality }
+func (g localGenerator) Modality() noewright.Modality { return g.modality }
 
-func (g localGenerator) Generate(_ context.Context, req loom.GenerateRequest) (loom.Result, error) {
+func (g localGenerator) Generate(_ context.Context, req noewright.GenerateRequest) (noewright.Result, error) {
 	prompt := req.UserPrompt
 	switch g.modality {
-	case loom.ModalityText:
-		return loom.NewTextResult("Beneath the corpse-sun, Wren's lantern cut a clean silver line through the incense-dark. The armoured choristers did not kneel; they only watched the girl who had walked out of a darkness they understood too well.", "stop", 0, 0), nil
-	case loom.ModalityImage:
-		return loom.NewImageResult(svg("Concept art: a lantern-bearer in a drowned cathedral-ship"), prompt, 1024, 576), nil
-	case loom.ModalityAudio:
-		return loom.NewAudioResult("https://example.invalid/media-story/ashen-choir.wav", "audio/wav", 18), nil
-	case loom.ModalityVideo:
-		return loom.NewVideoResult("https://example.invalid/media-story/cathedral-ship.mp4", svg("Video preview: rain and ash fall through the nave"), 8, 1280, 720), nil
-	case loom.ModalityModel3D:
-		return loom.NewModel3DResult("https://threejs.org/examples/models/gltf/DamagedHelmet/glTF-Binary/DamagedHelmet.glb", "model/gltf-binary", svg("3D asset: a rune-etched choir helm"), prompt, 2400, false), nil
-	case loom.ModalityWorld:
-		return loom.NewWorldResult([]loom.WorldDelta{
+	case noewright.ModalityText:
+		return noewright.NewTextResult("Beneath the corpse-sun, Wren's lantern cut a clean silver line through the incense-dark. The armoured choristers did not kneel; they only watched the girl who had walked out of a darkness they understood too well.", "stop", 0, 0), nil
+	case noewright.ModalityImage:
+		return noewright.NewImageResult(svg("Concept art: a lantern-bearer in a drowned cathedral-ship"), prompt, 1024, 576), nil
+	case noewright.ModalityAudio:
+		return noewright.NewAudioResult("https://example.invalid/media-story/ashen-choir.wav", "audio/wav", 18), nil
+	case noewright.ModalityVideo:
+		return noewright.NewVideoResult("https://example.invalid/media-story/cathedral-ship.mp4", svg("Video preview: rain and ash fall through the nave"), 8, 1280, 720), nil
+	case noewright.ModalityModel3D:
+		return noewright.NewModel3DResult("https://threejs.org/examples/models/gltf/DamagedHelmet/glTF-Binary/DamagedHelmet.glb", "model/gltf-binary", svg("3D asset: a rune-etched choir helm"), prompt, 2400, false), nil
+	case noewright.ModalityWorld:
+		return noewright.NewWorldResult([]noewright.WorldDelta{
 			{Op: "add_entity", Type: "lamplighter", EntityID: "wren", Pos: [3]float64{0, 0, 0}},
 			{Op: "add_entity", Type: "choir_knight", EntityID: "ashen-warden", Pos: [3]float64{5, 0, -3}},
 			{Op: "set_lighting", Data: map[string]any{"mood": "ashen dusk", "intensity": 0.3}},

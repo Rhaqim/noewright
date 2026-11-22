@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 // quality.go is the pre-process Quality Engine: deterministic post-hooks that
@@ -29,7 +29,7 @@ var defaultSlopPhrases = []string{
 // SlopBanHook rejects Author prose that contains any banned cliché phrase and
 // asks loom to retry, passing the offending phrases as Forbidden so the next
 // attempt avoids them. With no phrases supplied it uses a built-in list.
-func SlopBanHook(banned ...string) loom.PostHook {
+func SlopBanHook(banned ...string) noewright.PostHook {
 	if len(banned) == 0 {
 		banned = defaultSlopPhrases
 	}
@@ -37,11 +37,11 @@ func SlopBanHook(banned ...string) loom.PostHook {
 	for i, p := range banned {
 		lowered[i] = strings.ToLower(p)
 	}
-	return func(_ context.Context, req *loom.StepRequest, res loom.Result) (loom.Result, error) {
+	return func(_ context.Context, req *noewright.StepRequest, res noewright.Result) (noewright.Result, error) {
 		if req.AgentSlug != AgentAuthor {
 			return res, nil
 		}
-		text := strings.ToLower(loom.ResultText(res))
+		text := strings.ToLower(noewright.ResultText(res))
 		var hits []string
 		for i, p := range lowered {
 			if strings.Contains(text, p) {
@@ -49,7 +49,7 @@ func SlopBanHook(banned ...string) loom.PostHook {
 			}
 		}
 		if len(hits) > 0 {
-			return nil, loom.ErrRetryWith(loom.RetryAnnotation{
+			return nil, noewright.ErrRetryWith(noewright.RetryAnnotation{
 				Reason:    "your prose used banned cliché phrases; rewrite the scene without them",
 				Forbidden: hits,
 			})
@@ -62,14 +62,14 @@ func SlopBanHook(banned ...string) loom.PostHook {
 // annotation is also injected into the next generation attempt, so providers
 // that only follow prompts still receive the concrete limit. A hard token cap
 // belongs in the Flow; this hook catches models that ignore it.
-func MaxWordsHook(max int) loom.PostHook {
-	return func(_ context.Context, req *loom.StepRequest, res loom.Result) (loom.Result, error) {
+func MaxWordsHook(max int) noewright.PostHook {
+	return func(_ context.Context, req *noewright.StepRequest, res noewright.Result) (noewright.Result, error) {
 		if max <= 0 || req.AgentSlug != AgentAuthor {
 			return res, nil
 		}
-		words := len(strings.Fields(loom.ResultText(res)))
+		words := len(strings.Fields(noewright.ResultText(res)))
 		if words > max {
-			return nil, loom.ErrRetryWith(loom.RetryAnnotation{
+			return nil, noewright.ErrRetryWith(noewright.RetryAnnotation{
 				Reason: fmt.Sprintf("the scene is %d words; rewrite it as 350–500 words and never exceed %d words", words, max),
 			})
 		}
@@ -80,11 +80,11 @@ func MaxWordsHook(max int) loom.PostHook {
 // StalenessHook rejects Author prose that overlaps the previous turn's prose by
 // at least threshold (word-trigram Jaccard), asking loom to retry with guidance
 // to advance the story. threshold <= 0 defaults to 0.7.
-func StalenessHook(threshold float64) loom.PostHook {
+func StalenessHook(threshold float64) noewright.PostHook {
 	if threshold <= 0 {
 		threshold = 0.7
 	}
-	return func(_ context.Context, req *loom.StepRequest, res loom.Result) (loom.Result, error) {
+	return func(_ context.Context, req *noewright.StepRequest, res noewright.Result) (noewright.Result, error) {
 		if req.AgentSlug != AgentAuthor || req.Session == nil {
 			return res, nil
 		}
@@ -92,8 +92,8 @@ func StalenessHook(threshold float64) loom.PostHook {
 		if prev == "" {
 			return res, nil
 		}
-		if overlap := trigramOverlap(prev, loom.ResultText(res)); overlap >= threshold {
-			return nil, loom.ErrRetryWith(loom.RetryAnnotation{
+		if overlap := trigramOverlap(prev, noewright.ResultText(res)); overlap >= threshold {
+			return nil, noewright.ErrRetryWith(noewright.RetryAnnotation{
 				Reason: fmt.Sprintf("this scene repeats the previous one (%.0f%% overlap); advance with a new location, fact, character, or development", overlap*100),
 			})
 		}

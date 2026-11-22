@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"math/rand/v2"
 
-	loom "github.com/rhaqim/loom"
-	"github.com/rhaqim/loom/harness"
+	"github.com/rhaqim/noewright"
+	"github.com/rhaqim/noewright/harness"
 )
 
 // randomSuffix returns a short random hex string to avoid test slug collisions.
@@ -30,7 +30,7 @@ func buildHarnessPlan(agentSlug string) *harness.TestPlan {
 			Providers: []string{"echo"},
 		},
 		Assertions: []harness.Assertion{
-			harness.HasStatus(loom.ResultStatusReady),
+			harness.HasStatus(noewright.ResultStatusReady),
 			harness.MinLength(1),
 		},
 	}
@@ -38,6 +38,6 @@ func buildHarnessPlan(agentSlug string) *harness.TestPlan {
 
 // runHarness calls harness.Run with the engine. Kept as a thin wrapper so
 // the test file doesn't import harness directly (avoids import cycle check).
-func runHarness(ctx context.Context, e *loom.Engine, plan *harness.TestPlan) (*harness.TestReport, error) {
+func runHarness(ctx context.Context, e *noewright.Engine, plan *harness.TestPlan) (*harness.TestReport, error) {
 	return harness.Run(ctx, e, plan)
 }

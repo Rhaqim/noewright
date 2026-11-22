@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	loom "github.com/rhaqim/loom"
+	"github.com/rhaqim/noewright"
 )
 
 func TestModel3DGeneratorTextFlow(t *testing.T) {
@@ -45,7 +45,7 @@ func TestModel3DGeneratorTextFlow(t *testing.T) {
 	defer srv.Close()
 
 	g := NewModel3DGenerator("key").WithBaseURL(srv.URL)
-	res, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: "a chapel"})
+	res, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "a chapel"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestModel3DGeneratorTextFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	model, ok := res.(*loom.Model3DResult)
+	model, ok := res.(*noewright.Model3DResult)
 	if !ok || model.URL != "https://cdn/chapel.glb" || model.Prompt != "a chapel" {
 		t.Fatalf("result = %#v", res)
 	}
@@ -86,7 +86,7 @@ func TestModel3DGeneratorImageFlow(t *testing.T) {
 	defer srv.Close()
 
 	g := NewModel3DGenerator("key").WithBaseURL(srv.URL)
-	res, err := g.Generate(context.Background(), loom.GenerateRequest{Params: loom.GenerateParams{Extra: map[string]any{"image_url": "https://cdn/source.png"}}})
+	res, err := g.Generate(context.Background(), noewright.GenerateRequest{Params: noewright.GenerateParams{Extra: map[string]any{"image_url": "https://cdn/source.png"}}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +94,7 @@ func TestModel3DGeneratorImageFlow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if model, ok := res.(*loom.Model3DResult); !ok || model.URL != "https://cdn/model.glb" {
+	if model, ok := res.(*noewright.Model3DResult); !ok || model.URL != "https://cdn/model.glb" {
 		t.Fatalf("result = %#v", res)
 	}
 }
@@ -119,7 +119,7 @@ func TestModel3DGeneratorRefineOptions(t *testing.T) {
 	defer srv.Close()
 
 	g := NewModel3DGenerator("key").WithBaseURL(srv.URL)
-	res, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: "a chapel", Params: loom.GenerateParams{Extra: map[string]any{
+	res, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: "a chapel", Params: noewright.GenerateParams{Extra: map[string]any{
 		"art_style": "realistic", "refine_enable_pbr": true, "refine_texture_prompt": "mossy stone",
 	}}})
 	if err != nil {
@@ -145,7 +145,7 @@ func TestModel3DGeneratorRejectsLongPrompt(t *testing.T) {
 	for i := range long {
 		long[i] = 'a'
 	}
-	if _, err := g.Generate(context.Background(), loom.GenerateRequest{UserPrompt: string(long)}); err == nil {
+	if _, err := g.Generate(context.Background(), noewright.GenerateRequest{UserPrompt: string(long)}); err == nil {
 		t.Fatal("over-limit prompt accepted")
 	}
 	if called {

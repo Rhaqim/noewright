@@ -22,18 +22,18 @@ $rule
 $rule
 
 The types below are shown from the implementation package \`engine\`. Each is
-re-exported under the SAME name in \`github.com/rhaqim/loom\` — e.g.
-\`engine.Session\` is \`loom.Session\`, \`engine.RunStep\` is a method on
-\`loom.Engine\`. In your code always use the \`loom.\` prefix and import only
-\`github.com/rhaqim/loom\` (plus the subpackages shown further below). Never
+re-exported under the SAME name in \`github.com/rhaqim/noewright\` — e.g.
+\`engine.Session\` is \`noewright.Session\`, \`engine.RunStep\` is a method on
+\`noewright.Engine\`. In your code always use the \`loom.\` prefix and import only
+\`github.com/rhaqim/noewright\` (plus the subpackages shown further below). Never
 import internal/engine directly.
 HDR
 
-  printf '\n%s\n# github.com/rhaqim/loom  (use these under the loom. prefix)\n%s\n\n' "$rule" "$rule"
+  printf '\n%s\n# github.com/rhaqim/noewright  (use these under the loom. prefix)\n%s\n\n' "$rule" "$rule"
   go doc -all ./internal/engine
 
-  for pkg in schema generator/openai generator/anthropic generator/replicate generator/runway generator/meshy generator/echo judge harness cmd/loom-cli; do
-    printf '\n%s\n# github.com/rhaqim/loom/%s\n%s\n\n' "$rule" "$pkg" "$rule"
+  for pkg in schema generator/openai generator/anthropic generator/replicate generator/runway generator/meshy generator/echo judge harness cmd/noewright; do
+    printf '\n%s\n# github.com/rhaqim/noewright/%s\n%s\n\n' "$rule" "$pkg" "$rule"
     # generator/anthropic is a separate module; go doc must run inside it.
     if [ "$pkg" = generator/anthropic ]; then
       (cd "$pkg" && go doc -all . 2>/dev/null) || echo "(no exported API)"

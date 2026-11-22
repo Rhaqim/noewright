@@ -80,7 +80,7 @@ Status legend: ⬜ open · ✅ fixed · 🔷 won't-fix / accepted risk
   enumeration oracle. The register-409 signal is retained (UX) but is now
   rate-limited by H5. Token revocation/logout remains open (see below).
 
-- ✅ **M7 — DB creds in `--dsn` argv** (visible via `ps`). **Fix:** loom-cli adds
+- ✅ **M7 — DB creds in `--dsn` argv** (visible via `ps`). **Fix:** noewright adds
   `--dsn-file` and resolves DSN as dsn-file → `LOOM_DSN` → `--dsn`, warning on the
   flag path.
 
