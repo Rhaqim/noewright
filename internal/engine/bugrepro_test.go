@@ -12,10 +12,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -150,11 +151,11 @@ func TestReproC2_NonTransactionalOrphan(t *testing.T) {
 // TestReproC2_Postgres confirms C2 against a real Postgres ("in production"):
 // passing an in-memory Agent whose ID is absent from loom_agents makes the final
 // steps INSERT fail the agent_id FK *after* the results row has already
-// committed (results has no FK to agents), leaving an orphan. Gated on LOOM_DSN.
+// committed (results has no FK to agents), leaving an orphan. Gated on NOEWRIGHT_DSN.
 func TestReproC2_Postgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres production repro")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres production repro")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)

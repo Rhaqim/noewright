@@ -11,9 +11,10 @@ package enginetest
 import (
 	"context"
 	"errors"
-	"os"
 	"testing"
 	"time"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	"github.com/rhaqim/noewright"
@@ -347,9 +348,9 @@ func TestHeaderResumeStepIndex_Postgres(t *testing.T) {
 // eviction behave on Postgres — the caching is Go-level, but this proves it
 // composes with real registry writes and stays owner-scoped end to end.
 func TestLatestCache_Postgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("LOOM_DSN not set — skipping integration test")
+		t.Skip("NOEWRIGHT_DSN not set — skipping integration test")
 	}
 	ctx := context.Background()
 	db := openTestDB(t)

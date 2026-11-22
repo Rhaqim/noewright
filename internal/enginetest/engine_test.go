@@ -1,13 +1,14 @@
 // Package enginetest contains integration tests for the Loom engine.
-// Tests are skipped when the LOOM_DSN environment variable is not set.
+// Tests are skipped when the NOEWRIGHT_DSN environment variable is not set.
 package enginetest
 
 import (
 	"context"
 	"database/sql"
-	"os"
 	"testing"
 	"time"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	_ "github.com/lib/pq"
 
@@ -17,12 +18,12 @@ import (
 )
 
 // openTestDB opens a real Postgres connection and applies the schema.
-// The test is skipped if LOOM_DSN is unset.
+// The test is skipped if NOEWRIGHT_DSN is unset.
 func openTestDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("LOOM_DSN not set — skipping integration test")
+		t.Skip("NOEWRIGHT_DSN not set — skipping integration test")
 	}
 
 	db, err := sql.Open("postgres", dsn)

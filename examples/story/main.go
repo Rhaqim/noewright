@@ -11,7 +11,7 @@
 //
 // Run it after `make up && make migrate`:
 //
-//	LOOM_DSN="postgres://loom:loom@localhost:5432/loom?sslmode=disable" go run ./examples/story
+//	NOEWRIGHT_DSN="postgres://loom:loom@localhost:5432/loom?sslmode=disable" go run ./examples/story
 package main
 
 import (
@@ -19,8 +19,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
 	"time"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	_ "github.com/lib/pq"
 
@@ -32,7 +33,7 @@ import (
 func main() {
 	ctx := context.Background()
 
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
 		dsn = "postgres://loom:loom@localhost:5432/loom?sslmode=disable"
 	}

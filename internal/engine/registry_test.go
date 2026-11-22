@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"testing"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -36,11 +37,11 @@ func TestRegistryDeleteAndOwnerSQLite(t *testing.T) {
 	registryDeleteAndOwner(t, e)
 }
 
-// TestRegistryDeleteAndOwnerPostgres runs the same against Postgres (LOOM_DSN).
+// TestRegistryDeleteAndOwnerPostgres runs the same against Postgres (NOEWRIGHT_DSN).
 func TestRegistryDeleteAndOwnerPostgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres registry test")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres registry test")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)

@@ -14,6 +14,8 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rhaqim/noewright/internal/dsnenv"
+
 	_ "github.com/lib/pq"
 	"github.com/spf13/cobra"
 
@@ -27,7 +29,7 @@ func main() {
 		Use:   "noewright",
 		Short: "Loom procgen engine CLI",
 	}
-	root.PersistentFlags().String("dsn", "", "PostgreSQL connection string. WARNING: visible to other users via 'ps'/'/proc'; prefer LOOM_DSN or --dsn-file")
+	root.PersistentFlags().String("dsn", "", "PostgreSQL connection string. WARNING: visible to other users via 'ps'/'/proc'; prefer NOEWRIGHT_DSN or --dsn-file")
 	root.PersistentFlags().String("dsn-file", "", "path to a file containing the PostgreSQL connection string (keeps credentials out of the process arguments)")
 
 	root.AddCommand(migrateCmd(), seedCmd(), testCmd())
@@ -40,7 +42,7 @@ func main() {
 
 // openDB opens a database connection from flags / env. The DSN (which contains
 // credentials) is resolved in order of decreasing safety: a --dsn-file, then the
-// LOOM_DSN env var, then the --dsn flag. The flag is the least safe because the
+// NOEWRIGHT_DSN env var (or the pre-rename LOOM_DSN), then the --dsn flag. The flag is the least safe because the
 // connection string — password included — is visible to any local user via
 // 'ps'/'/proc/<pid>/cmdline', so its use emits a warning.
 func openDB(cmd *cobra.Command) (*sql.DB, error) {
@@ -53,16 +55,16 @@ func openDB(cmd *cobra.Command) (*sql.DB, error) {
 		dsn = strings.TrimSpace(string(b))
 	}
 	if dsn == "" {
-		dsn = os.Getenv("LOOM_DSN")
+		dsn = dsnenv.Get()
 	}
 	if dsn == "" {
 		if flagDSN, _ := cmd.Flags().GetString("dsn"); flagDSN != "" {
-			fmt.Fprintln(os.Stderr, "warning: --dsn exposes database credentials in the process arguments (visible via 'ps'); prefer LOOM_DSN or --dsn-file")
+			fmt.Fprintln(os.Stderr, "warning: --dsn exposes database credentials in the process arguments (visible via 'ps'); prefer NOEWRIGHT_DSN or --dsn-file")
 			dsn = flagDSN
 		}
 	}
 	if dsn == "" {
-		return nil, fmt.Errorf("database DSN is required: set LOOM_DSN, --dsn-file, or --dsn")
+		return nil, fmt.Errorf("database DSN is required: set NOEWRIGHT_DSN, --dsn-file, or --dsn")
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

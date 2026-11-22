@@ -4,9 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -295,12 +296,12 @@ func TestAdoptAgentResponseFormatSQLite(t *testing.T) {
 	}
 }
 
-// TestApplyPostgres runs the runner against Postgres when LOOM_DSN is set,
+// TestApplyPostgres runs the runner against Postgres when NOEWRIGHT_DSN is set,
 // covering the information_schema column-introspection path.
 func TestApplyPostgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres migration test")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres migration test")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)
@@ -337,9 +338,9 @@ func TestApplyPostgres(t *testing.T) {
 // see the decoy, skip the ALTER, and leave public.loom_prompts permanently
 // without owner. Apply must backfill the relation the ALTER actually targets.
 func TestMultiSchemaBackfillPostgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres multi-schema test")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres multi-schema test")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)
@@ -408,9 +409,9 @@ func TestMultiSchemaBackfillPostgres(t *testing.T) {
 // actually widened — two owners can share a slug afterwards, and a true
 // duplicate is still rejected.
 func TestOwnerUniqueKeyUpgradePostgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres owner-key upgrade test")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres owner-key upgrade test")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)
@@ -525,9 +526,9 @@ func dropPrefixed(t *testing.T, db *sql.DB, prefix string) {
 // "could not create unique index (23505)" — and it must never resolve the
 // conflict by deleting a caller's rows.
 func TestOwnerUniqueKeyRefusesDuplicatesPostgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres duplicate-refusal test")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres duplicate-refusal test")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)

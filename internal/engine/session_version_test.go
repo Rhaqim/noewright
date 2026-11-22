@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"testing"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -37,9 +38,9 @@ func TestSessionUpdateOptimisticConcurrencySQLite(t *testing.T) {
 
 // TestSessionUpdateOptimisticConcurrencyPostgres runs the same against Postgres.
 func TestSessionUpdateOptimisticConcurrencyPostgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres optimistic-concurrency test")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres optimistic-concurrency test")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)

@@ -9,9 +9,10 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"testing"
 	"time"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -265,9 +266,9 @@ func TestGC_T4_ScopesToBranchesAndHonorsPin(t *testing.T) {
 // predicate (which deletes real sessions) is otherwise never run. Uses real
 // RunStep so the steps satisfy Postgres foreign keys.
 func TestGC_T4_Postgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres GC T4 test")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres GC T4 test")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)

@@ -2,7 +2,7 @@
 // Each test builds the CLI binary once (TestMain) and then exercises the
 // migrate, seed, and test subcommands against a real Postgres database.
 //
-// Tests are skipped when LOOM_DSN is not set.
+// Tests are skipped when NOEWRIGHT_DSN is not set.
 package clitest
 
 import (
@@ -11,13 +11,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 )
 
 var cliBin string // path to the compiled noewright binary
 
 // TestMain compiles the noewright binary before any test runs.
 func TestMain(m *testing.M) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
 		// Skip compilation — tests will skip themselves.
 		os.Exit(m.Run())
@@ -48,7 +50,7 @@ func TestMain(m *testing.M) {
 func run(t *testing.T, args ...string) (string, int) {
 	t.Helper()
 	cmd := exec.Command(cliBin, args...)
-	cmd.Env = append(os.Environ(), "LOOM_DSN="+os.Getenv("LOOM_DSN"))
+	cmd.Env = append(os.Environ(), dsnenv.Var+"="+dsnenv.Get())
 	out, err := cmd.CombinedOutput()
 	code := 0
 	if err != nil {
@@ -61,11 +63,11 @@ func run(t *testing.T, args ...string) (string, int) {
 	return string(out), code
 }
 
-// requireDSN skips the test if LOOM_DSN is unset.
+// requireDSN skips the test if NOEWRIGHT_DSN is unset.
 func requireDSN(t *testing.T) {
 	t.Helper()
-	if os.Getenv("LOOM_DSN") == "" {
-		t.Skip("LOOM_DSN not set — skipping integration test")
+	if dsnenv.Get() == "" {
+		t.Skip("NOEWRIGHT_DSN not set — skipping integration test")
 	}
 }
 

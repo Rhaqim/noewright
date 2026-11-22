@@ -12,10 +12,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	"github.com/rhaqim/noewright/schema"
@@ -216,11 +217,11 @@ func TestAsyncMedia_FailedResultMarksFailed(t *testing.T) {
 // TestAsyncMedia_PostgresFKOrdering is the dialect-specific repro: on Postgres,
 // loom_results.task_id has a real foreign key to loom_tasks(id), so persisting a
 // pending result FK-violated before the fix (no task row was inserted). It also
-// proves the full resolve path on Postgres. Gated on LOOM_DSN.
+// proves the full resolve path on Postgres. Gated on NOEWRIGHT_DSN.
 func TestAsyncMedia_PostgresFKOrdering(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres async-media repro")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres async-media repro")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)

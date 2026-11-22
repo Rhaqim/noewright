@@ -4,8 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"os"
 	"testing"
+
+	"github.com/rhaqim/noewright/internal/dsnenv"
 
 	"github.com/google/uuid"
 	_ "github.com/lib/pq"
@@ -45,11 +46,11 @@ func TestFlowRoundTripSQLite(t *testing.T) {
 }
 
 // TestFlowRoundTripPostgres runs the same lifecycle against Postgres. Gated on
-// LOOM_DSN; uses unique slugs so it is safe to re-run against a shared DB.
+// NOEWRIGHT_DSN; uses unique slugs so it is safe to re-run against a shared DB.
 func TestFlowRoundTripPostgres(t *testing.T) {
-	dsn := os.Getenv("LOOM_DSN")
+	dsn := dsnenv.Get()
 	if dsn == "" {
-		t.Skip("set LOOM_DSN to run the Postgres flow round-trip")
+		t.Skip("set NOEWRIGHT_DSN to run the Postgres flow round-trip")
 	}
 	ctx := context.Background()
 	db, err := sql.Open("postgres", dsn)

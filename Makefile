@@ -1,5 +1,5 @@
 DSN ?= postgres://loom:loom@localhost:5432/loom?sslmode=disable
-export LOOM_DSN := $(DSN)
+export NOEWRIGHT_DSN := $(DSN)
 
 .PHONY: help up down migrate seed example test-engine test-cli test-schema test-all build clean generate check-facade check llms-full release
 
@@ -60,15 +60,16 @@ check-facade: ## Fail if aliases.go is stale (run `make generate` and commit)
 	fi
 	@echo "facade is up to date."
 
-# LOOM_DSN is cleared explicitly. This target is documented as the non-DB
-# check, but the Makefile exports LOOM_DSN unconditionally at the top — so
+# NOEWRIGHT_DSN is cleared explicitly. This target is documented as the non-DB
+# check, but the Makefile exports NOEWRIGHT_DSN unconditionally at the top — so
 # without this the Postgres-backed tests do NOT skip, they spend their ping
 # timeout dialling a database that is not running and then fail. Clearing it
-# restores the intended "skip if no DSN" behaviour.
+# restores the intended "skip if no DSN" behaviour. LOOM_DSN (the pre-rename
+# name, still read as a fallback) is cleared too, in case the shell sets it.
 check: check-facade ## Run non-DB checks: facade sync, vet, build, race tests (no Postgres needed)
 	go vet ./...
 	go build ./...
-	LOOM_DSN= go test -race -count=1 ./...
+	NOEWRIGHT_DSN= LOOM_DSN= go test -race -count=1 ./...
 	cd generator/anthropic && go vet ./... && go build ./... && go test -race -count=1 ./...
 
 release: ## Tag loom (and generator/anthropic if it changed) as VERSION=vX.Y.Z on main; prints the push command

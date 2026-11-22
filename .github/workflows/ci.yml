@@ -30,7 +30,7 @@ jobs:
       - name: go build
         run: go build ./...
 
-      # No LOOM_DSN is set, so the Postgres-backed integration tests in
+      # No NOEWRIGHT_DSN is set, so the Postgres-backed integration tests in
       # schema, internal/enginetest and internal/clitest skip themselves. The
       # SQLite and in-memory tests (including the facade drift guard) still run
       # under -race. The `postgres` job below covers what is skipped here.
@@ -83,8 +83,8 @@ jobs:
       # packages share one database and the same loom_ prefixed tables, so
       # running them in parallel interleaves migrations with other packages'
       # data and fails spuriously.
-      # Set DSN, not LOOM_DSN: the Makefile does `LOOM_DSN := $(DSN)`, which
-      # overrides anything LOOM_DSN held in the environment. DSN uses ?= and so
+      # Set DSN, not NOEWRIGHT_DSN: the Makefile does `NOEWRIGHT_DSN := $(DSN)`, which
+      # overrides anything NOEWRIGHT_DSN held in the environment. DSN uses ?= and so
       # honours this.
       - name: Integration tests (serial)
         env:
