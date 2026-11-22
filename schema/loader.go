@@ -1,4 +1,4 @@
-// Package schema provides the versioned migration runner for the Loom engine.
+// Package schema provides the versioned migration runner for the Noewright engine.
 // Apply migrations with:
 //
 //	loader := schema.NewLoader(schema.DialectPostgres)
@@ -20,7 +20,7 @@ const (
 	DialectSQLite   Dialect = "sqlite"
 )
 
-// Loader applies the Loom DDL idempotently to a database.
+// Loader applies the Noewright DDL idempotently to a database.
 type Loader struct {
 	dialect Dialect
 	prefix  string
@@ -36,7 +36,7 @@ func NewLoader(dialect Dialect, prefix ...string) *Loader {
 	return &Loader{dialect: dialect, prefix: p}
 }
 
-// postgresStatements returns Postgres DDL for all Loom tables.
+// postgresStatements returns Postgres DDL for all Noewright tables.
 func postgresStatements(p string) []string {
 	return []string{
 		// Extensions

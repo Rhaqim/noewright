@@ -60,7 +60,7 @@ type SessionEvent struct {
 // ErrSubscriberLagged is the reason a subscription was closed because its
 // consumer fell too far behind. Reconnect with FromStep set past the last
 // step.done received; nothing persisted is lost.
-var ErrSubscriberLagged = errors.New("loom: event subscriber fell behind and was disconnected")
+var ErrSubscriberLagged = errors.New("noewright: event subscriber fell behind and was disconnected")
 
 // Broadcaster fans session events out to subscribers. The default is
 // in-process; a deployment with several engine instances supplies one backed

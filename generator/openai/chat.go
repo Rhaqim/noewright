@@ -1,4 +1,4 @@
-// Package openai provides a Loom generator adapter for OpenAI chat models.
+// Package openai provides a Noewright generator adapter for OpenAI chat models.
 package openai
 
 import (

@@ -1,6 +1,6 @@
 package engine
 
-// clientasks_test.go — regressions for the asks in loom-asks.md (§1 response
+// clientasks_test.go — regressions for the asks in noewright-asks.md (§1 response
 // format List, §2 flow active-version resolution, §5 per-step usage). Each
 // pins the new contract so a revert fails here rather than in a consumer.
 

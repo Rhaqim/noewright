@@ -85,7 +85,7 @@ func (s *agentService) Versions(ctx context.Context, owner, slug string) ([]*Age
 
 func (s *agentService) Delete(ctx context.Context, owner, slug string, version int) error {
 	if version < 1 {
-		return fmt.Errorf("loom: delete agent %q: an explicit version >= 1 is required", slug)
+		return fmt.Errorf("noewright: delete agent %q: an explicit version >= 1 is required", slug)
 	}
 	// Resolve the row id first so we can also evict the by-id cache that GetByID
 	// populates (cacheKey "agent-id").

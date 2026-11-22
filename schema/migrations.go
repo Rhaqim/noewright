@@ -12,7 +12,7 @@ import (
 // which migrations have run.
 const migrationsTable = "schema_migrations"
 
-// Migration is a single ordered, versioned change to the Loom schema. Version
+// Migration is a single ordered, versioned change to the Noewright schema. Version
 // numbers are dense and start at 1. Up runs inside a transaction together with
 // the ledger insert, so a failed migration rolls back cleanly and its version
 // is never recorded.
@@ -266,18 +266,18 @@ func migrations() []Migration {
 // startup is unaffected; multi-instance coordination is a production concern.
 func (l *Loader) Apply(ctx context.Context, db *sql.DB) error {
 	if err := l.ensureLedger(ctx, db); err != nil {
-		return fmt.Errorf("loom schema: ledger: %w", err)
+		return fmt.Errorf("noewright schema: ledger: %w", err)
 	}
 	applied, err := l.appliedVersions(ctx, db)
 	if err != nil {
-		return fmt.Errorf("loom schema: read ledger: %w", err)
+		return fmt.Errorf("noewright schema: read ledger: %w", err)
 	}
 	for _, m := range migrations() {
 		if applied[m.Version] {
 			continue
 		}
 		if err := l.runMigration(ctx, db, m); err != nil {
-			return fmt.Errorf("loom schema: migration %d (%s): %w", m.Version, m.Name, err)
+			return fmt.Errorf("noewright schema: migration %d (%s): %w", m.Version, m.Name, err)
 		}
 	}
 	return nil
@@ -415,7 +415,7 @@ func ensureNoDuplicates(ctx context.Context, tx *sql.Tx, table string, cols []st
 		"cannot add UNIQUE (%s) to %s: %d or more existing row groups already violate it "+
 			"(e.g. %s). This table lost its narrower unique key at some point, so duplicates "+
 			"were allowed in. Remove or re-key the duplicate rows, then re-run the migration; "+
-			"loom will not delete them for you",
+			"noewright will not delete them for you",
 		list, table, len(samples), strings.Join(samples, "; "))
 }
 

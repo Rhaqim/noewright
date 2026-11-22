@@ -1,4 +1,4 @@
-// Quickstart: how to use loom to run a multi-agent turn — a lead that "writes"
+// Quickstart: how to use noewright to run a multi-agent turn — a lead that "writes"
 // and a follower that "reviews" it — with NO API key and NO external database
 // (in-memory SQLite + a tiny local generator). Run: go run ./examples/quickstart
 package main
@@ -15,7 +15,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// storyGen stands in for "your model". loom hands it the rendered system + user
+// storyGen stands in for "your model". noewright hands it the rendered system + user
 // prompt and it returns a result. Swap this for generator/openai or
 // generator/anthropic and nothing else in this file changes.
 type storyGen struct{}

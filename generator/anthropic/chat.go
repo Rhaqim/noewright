@@ -1,4 +1,4 @@
-// Package anthropic provides a Loom generator adapter for Anthropic Claude
+// Package anthropic provides a Noewright generator adapter for Anthropic Claude
 // models, built on the official Anthropic Go SDK
 // (github.com/anthropics/anthropic-sdk-go).
 //
@@ -276,7 +276,7 @@ func (g *ChatGenerator) buildParams(req noewright.GenerateRequest) (anthropic.Me
 
 // systemWithFormat appends JSON-output guidance to the system prompt when the
 // agent declares a response format without native structured outputs. The
-// contract is validated by loom's SchemaValidationPostHook; toResult then
+// contract is validated by noewright's SchemaValidationPostHook; toResult then
 // decodes the JSON into a StructuredResult.
 func systemWithFormat(req noewright.GenerateRequest) string {
 	if req.ResponseFormat == nil {
@@ -297,7 +297,7 @@ func systemWithFormat(req noewright.GenerateRequest) string {
 	return b.String()
 }
 
-// toResult converts a complete Message into a loom Result: a refusal becomes a
+// toResult converts a complete Message into a noewright Result: a refusal becomes a
 // GenerationRejected error, JSON output for a ResponseFormat a
 // StructuredResult, anything else a TextResult.
 func (g *ChatGenerator) toResult(msg *anthropic.Message, req noewright.GenerateRequest) (noewright.Result, error) {

@@ -1,6 +1,6 @@
 package noewright_test
 
-// Guards llms.txt (the AI-oriented guide) against API drift: every `loom.<Name>`
+// Guards llms.txt (the AI-oriented guide) against API drift: every `noewright.<Name>`
 // it references must still be a real exported symbol of the public facade. When
 // this fails, a symbol in llms.txt was renamed or removed — fix the doc.
 //
@@ -38,7 +38,7 @@ func TestLLMSTxtReferencesExist(t *testing.T) {
 	}
 	sort.Strings(unknown)
 	if len(unknown) > 0 {
-		t.Fatalf("llms.txt references %d loom.* symbol(s) not in the public API (renamed/removed — update the doc): %v",
+		t.Fatalf("llms.txt references %d noewright.* symbol(s) not in the public API (renamed/removed — update the doc): %v",
 			len(unknown), unknown)
 	}
 }

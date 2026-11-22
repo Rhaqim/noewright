@@ -1,4 +1,4 @@
-// Package harness provides a test harness for Loom procgen pipelines.
+// Package harness provides a test harness for Noewright procgen pipelines.
 //
 // A TestPlan defines a scripted session, a VariantMatrix of providers/prompts/
 // parameters to cross-product, and a set of Assertions that are evaluated

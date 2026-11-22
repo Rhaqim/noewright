@@ -1,7 +1,7 @@
 // Package domain holds the Conexus story model, ported to stand on its own. These
 // types mirror the real Conexus world/narrative packages (World, Constitution,
 // State, the Logician's structured output) trimmed to what this refactor
-// exercises. They are plain data — persistence is loom's job.
+// exercises. They are plain data — persistence is noewright's job.
 package domain
 
 import "github.com/google/uuid"
@@ -56,7 +56,7 @@ type StoryDirectives struct {
 }
 
 // PlayState is the mutable per-playthrough state (Conexus NarrativeState +
-// GameState), stored in the loom Session's State.Vars.
+// GameState), stored in the noewright Session's State.Vars.
 type PlayState struct {
 	Location          string   `json:"location"`
 	Time              string   `json:"time"`

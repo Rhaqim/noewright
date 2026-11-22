@@ -1,7 +1,7 @@
-// Package engine is the Conexus orchestrator, rebuilt on loom. It mirrors the
+// Package engine is the Conexus orchestrator, rebuilt on noewright. It mirrors the
 // monorepo's StoryOrchestrator.PlayTurn pipeline — load, frame, recall, generate
 // the multi-agent turn, validate, apply state, persist, enqueue media — but every
-// generation/persistence concern is delegated to loom, and every monorepo service
+// generation/persistence concern is delegated to noewright, and every monorepo service
 // is reached through a port so the real ones plug in later.
 package engine
 
@@ -19,9 +19,9 @@ import (
 	"github.com/rhaqim/noewright"
 )
 
-// Config wires loom and the monorepo seams.
+// Config wires noewright and the monorepo seams.
 type Config struct {
-	Loom         *noewright.Engine
+	Noewright    *noewright.Engine
 	Memory       ports.MemoryVault
 	Media        ports.MultimediaQueue
 	Plugins      ports.PluginRegistry
@@ -29,7 +29,7 @@ type Config struct {
 	Log          ports.Logger
 	Versions     map[string][]int // agent -> available prompt versions
 	StoryVersion int              // prompt version to play this story at
-	// ValidateSchemas registers loom's schema-validation post-hook so agent JSON
+	// ValidateSchemas registers noewright's schema-validation post-hook so agent JSON
 	// is checked against the response_format stored on its prompt (auto-retry on
 	// violation). Leave false for the offline stub, whose reduced output does not
 	// satisfy the full v2 schemas; enable for real providers.
@@ -44,7 +44,7 @@ type Config struct {
 	// catches the clichés nobody listed and the repetition that reuses no
 	// words.
 	//
-	// It is inert unless the loom engine also has an Evaluator configured, so
+	// It is inert unless the noewright engine also has an Evaluator configured, so
 	// setting it without one changes nothing.
 	SemanticQuality bool
 	// MinProseQuality is the weighted score below which the semantic gate sends
@@ -52,7 +52,7 @@ type Config struct {
 	// tier off and keeps only the two yes/no gates.
 	MinProseQuality float64
 	// SemanticQualityRetryLimit caps retries requested by the evaluator alone.
-	// Zero means it may request one retry; a negative value uses Loom's full
+	// Zero means it may request one retry; a negative value uses Noewright's full
 	// step retry budget. This protects an interactive run from a classifier
 	// that repeatedly rejects otherwise usable prose.
 	SemanticQualityRetryLimit int
@@ -64,7 +64,7 @@ type Conexus struct {
 	flow noewright.Flow
 }
 
-// New constructs the engine and registers the playthrough hooks on the loom
+// New constructs the engine and registers the playthrough hooks on the noewright
 // engine: the memory-recall pre-hook and Logician QA post-hook always, plus the
 // schema-validation and quality-engine (slop bans + staleness) post-hooks when
 // the corresponding Config flags are set.
@@ -73,28 +73,28 @@ func New(cfg Config) *Conexus {
 		cfg.StoryVersion = narrative.LatestVersion(cfg.Versions, narrative.AgentAuthor)
 	}
 	c := &Conexus{cfg: cfg, flow: narrative.Flow(cfg.Versions, cfg.StoryVersion)}
-	cfg.Loom.Hooks().RegisterPre("memory-recall", c.memoryRecallHook())
+	cfg.Noewright.Hooks().RegisterPre("memory-recall", c.memoryRecallHook())
 	if cfg.ValidateSchemas {
 		// Structural check first (against the prompt's stored schema), then the
 		// semantic Logician QA (option count / verb-bucket dedupe).
-		cfg.Loom.Hooks().RegisterPost("schema-validate", noewright.SchemaValidationPostHook())
+		cfg.Noewright.Hooks().RegisterPost("schema-validate", noewright.SchemaValidationPostHook())
 	}
-	cfg.Loom.Hooks().RegisterPost("logician-qa", narrative.QAHook())
+	cfg.Noewright.Hooks().RegisterPost("logician-qa", narrative.QAHook())
 	// Enforce a reader-friendly scene length for all providers. The Flow also
 	// supplies a max_tokens cap; this hook is the provider-independent backstop.
-	cfg.Loom.Hooks().RegisterPost("prose-length", narrative.MaxWordsHook(550))
+	cfg.Noewright.Hooks().RegisterPost("prose-length", narrative.MaxWordsHook(550))
 	if cfg.QualityEngine {
 		// Author-side quality gates: reject cliché prose and scenes that repeat
-		// the previous turn, asking loom to retry with guidance.
-		cfg.Loom.Hooks().RegisterPost("slop-bans", narrative.SlopBanHook())
-		cfg.Loom.Hooks().RegisterPost("staleness", narrative.StalenessHook(0))
+		// the previous turn, asking noewright to retry with guidance.
+		cfg.Noewright.Hooks().RegisterPost("slop-bans", narrative.SlopBanHook())
+		cfg.Noewright.Hooks().RegisterPost("staleness", narrative.StalenessHook(0))
 	}
 	if cfg.SemanticQuality {
 		// The semantic tier. Registered AFTER the deterministic hooks on
 		// purpose: the string checks are free, so let them catch what they can
 		// before spending a call on the questions they cannot ask.
-		cfg.Loom.Hooks().RegisterPost("semantic-quality",
-			narrative.SemanticQualityGateWithRetryLimit(cfg.Loom, cfg.MinProseQuality, cfg.SemanticQualityRetryLimit))
+		cfg.Noewright.Hooks().RegisterPost("semantic-quality",
+			narrative.SemanticQualityGateWithRetryLimit(cfg.Noewright, cfg.MinProseQuality, cfg.SemanticQualityRetryLimit))
 	}
 	return c
 }
@@ -102,9 +102,9 @@ func New(cfg Config) *Conexus {
 // StartStory migrates a block prompt into a world and opens a playthrough.
 func (c *Conexus) StartStory(ctx context.Context, blockText, accountID string) (uuid.UUID, domain.World, error) {
 	mig := &migration.Service{
-		Loom:    c.cfg.Loom,
-		Version: narrative.LatestVersion(c.cfg.Versions, narrative.AgentMigrate),
-		Log:     c.cfg.Log,
+		Noewright: c.cfg.Noewright,
+		Version:   narrative.LatestVersion(c.cfg.Versions, narrative.AgentMigrate),
+		Log:       c.cfg.Log,
 	}
 	world, con, err := mig.Migrate(ctx, blockText)
 	if err != nil {
@@ -138,7 +138,7 @@ func (c *Conexus) StartStory(ctx context.Context, blockText, accountID string) (
 		Tags:     []string{"conexus", world.Genre, fmt.Sprintf("promptv%d", c.cfg.StoryVersion)},
 		Metadata: map[string]any{"world_id": world.ID.String(), "prompt_version": c.cfg.StoryVersion},
 	}
-	if err := c.cfg.Loom.Sessions().Create(ctx, sess); err != nil {
+	if err := c.cfg.Noewright.Sessions().Create(ctx, sess); err != nil {
 		return uuid.Nil, domain.World{}, err
 	}
 	// Seed memory with the cast and premise.
@@ -166,7 +166,7 @@ type TurnResult struct {
 
 // PlayTurn advances the story by one turn.
 func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, action string, onChunk func(string)) (*TurnResult, error) {
-	sess, err := c.cfg.Loom.Sessions().Get(ctx, storyID)
+	sess, err := c.cfg.Noewright.Sessions().Get(ctx, storyID)
 	if err != nil {
 		return nil, fmt.Errorf("load story: %w", err)
 	}
@@ -209,7 +209,7 @@ func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, ac
 	}
 
 	var streamedDraft strings.Builder
-	turn, err := c.cfg.Loom.RunTurn(ctx, sess, noewright.TurnRequest{
+	turn, err := c.cfg.Noewright.RunTurn(ctx, sess, noewright.TurnRequest{
 		Flow:   c.flow,
 		Action: freeText(action),
 		Inputs: inputs,
@@ -225,7 +225,7 @@ func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, ac
 		OnStreamEnd: func(attempt int) {
 			// A rejected streamed draft cannot be persisted as a Step. Keep it in
 			// verbose logs, labeled by attempt, so evaluator decisions can be
-			// compared with the exact Loom output that triggered them.
+			// compared with the exact Noewright output that triggered them.
 			c.cfg.Log.Info("author draft complete",
 				"attempt", attempt,
 				"words", len(strings.Fields(streamedDraft.String())),
@@ -240,7 +240,7 @@ func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, ac
 
 	res := &TurnResult{TurnID: turn.ID.String()}
 	// Do not reconstruct prose from streamed chunks: a retry streams rejected
-	// drafts too. The settled Loom result is the only draft that passed hooks.
+	// drafts too. The settled Noewright result is the only draft that passed hooks.
 	res.Prose = strings.TrimSpace(noewright.ResultText(turn.Lead.Result))
 
 	// Parse the Logician follower (QA hook already validated it).
@@ -296,7 +296,7 @@ func (c *Conexus) PlayTurn(ctx context.Context, storyID uuid.UUID, accountID, ac
 	// Save updated state.
 	sess.State.Vars["play"] = toMap(play)
 	sess.State.Vars["last_prose"] = res.Prose
-	if err := c.cfg.Loom.Sessions().Update(ctx, sess); err != nil {
+	if err := c.cfg.Noewright.Sessions().Update(ctx, sess); err != nil {
 		return nil, fmt.Errorf("save state: %w", err)
 	}
 
@@ -363,11 +363,11 @@ func firstNonEmpty(vals ...string) string {
 
 // Fork branches the story at the current head for an alternate timeline.
 func (c *Conexus) Fork(ctx context.Context, storyID uuid.UUID) (uuid.UUID, error) {
-	parent, err := c.cfg.Loom.Sessions().Get(ctx, storyID)
+	parent, err := c.cfg.Noewright.Sessions().Get(ctx, storyID)
 	if err != nil {
 		return uuid.Nil, err
 	}
-	branch, err := c.cfg.Loom.Sessions().Fork(ctx, storyID, len(parent.History))
+	branch, err := c.cfg.Noewright.Sessions().Fork(ctx, storyID, len(parent.History))
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -383,7 +383,7 @@ type Snapshot struct {
 
 // World returns the migrated world for a story (for display / resume headers).
 func (c *Conexus) World(ctx context.Context, storyID uuid.UUID) (domain.World, error) {
-	sess, err := c.cfg.Loom.Sessions().Get(ctx, storyID)
+	sess, err := c.cfg.Noewright.Sessions().Get(ctx, storyID)
 	if err != nil {
 		return domain.World{}, err
 	}
@@ -392,10 +392,10 @@ func (c *Conexus) World(ctx context.Context, storyID uuid.UUID) (domain.World, e
 	return w, err
 }
 
-// SessionUSD returns loom's recorded total spend for a story (cross-check of the
+// SessionUSD returns noewright's recorded total spend for a story (cross-check of the
 // per-turn figures; populated as async cost records land).
 func (c *Conexus) SessionUSD(ctx context.Context, storyID uuid.UUID) float64 {
-	u, err := c.cfg.Loom.Cost().SessionUsage(ctx, storyID)
+	u, err := c.cfg.Noewright.Cost().SessionUsage(ctx, storyID)
 	if err != nil || u == nil {
 		return 0
 	}
@@ -404,7 +404,7 @@ func (c *Conexus) SessionUSD(ctx context.Context, storyID uuid.UUID) float64 {
 
 // Snapshot returns the current step, status, and pending options for a story.
 func (c *Conexus) Snapshot(ctx context.Context, storyID uuid.UUID) (*Snapshot, error) {
-	sess, err := c.cfg.Loom.Sessions().Get(ctx, storyID)
+	sess, err := c.cfg.Noewright.Sessions().Get(ctx, storyID)
 	if err != nil {
 		return nil, err
 	}
@@ -447,7 +447,7 @@ func (c *Conexus) turnCost(turn *noewright.Turn) (in, out int, usd float64) {
 		i, o := tokensOf(s.Result)
 		in += i
 		out += o
-		price, _ := c.cfg.Loom.PriceResult(noewright.ResultModel(s.Result), i, o)
+		price, _ := c.cfg.Noewright.PriceResult(noewright.ResultModel(s.Result), i, o)
 		usd += price
 	}
 	return

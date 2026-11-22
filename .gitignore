@@ -24,6 +24,7 @@ bin/
 
 # Local scratch / planning docs, not part of the library
 /LOOM_*.md
+/NOEWRIGHT_*.md
 
 # Stray local copy of the loom-ui playground (it lives in its own repo)
 /examples/loom-ui/

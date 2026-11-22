@@ -42,7 +42,7 @@ func ResponseFormatJSON(rawSchema string, strict bool) (*ResponseFormat, error) 
 	rf := &ResponseFormat{StrictMode: strict}
 	if s := strings.TrimSpace(rawSchema); s != "" {
 		if err := json.Unmarshal([]byte(s), &rf.Schema); err != nil {
-			return nil, fmt.Errorf("loom: response format schema: %w", err)
+			return nil, fmt.Errorf("noewright: response format schema: %w", err)
 		}
 	}
 	return rf, nil
@@ -102,7 +102,7 @@ type PromptRegistry interface {
 	// and UserTemplateID FKs are resolved back to prompt text without listing
 	// every prompt.
 	//
-	// This is NOT owner-scoped: it exists to resolve loom's own internal FK
+	// This is NOT owner-scoped: it exists to resolve noewright's own internal FK
 	// references, and a UUID primary key is globally unique. An application must
 	// therefore not pass an untrusted, tenant-supplied ID to it without checking
 	// the returned record's Owner against the caller's scope itself.

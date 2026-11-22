@@ -166,9 +166,9 @@ func (w *Worker) Run(ctx context.Context) {
 	for {
 		report, err := w.Sweep(ctx)
 		if err != nil {
-			log.Printf("loom/gc: sweep error: %v", err)
+			log.Printf("noewright/gc: sweep error: %v", err)
 		} else {
-			log.Println("loom/gc:", report)
+			log.Println("noewright/gc:", report)
 		}
 
 		select {
@@ -243,7 +243,7 @@ func (w *Worker) Sweep(ctx context.Context) (*SweepReport, error) {
 // skipped as invalid.
 func (w *Worker) sweepRetention(ctx context.Context, rule RetentionRule) (int, error) {
 	if rule.MaxIdle <= 0 || (rule.Action != RetentionDiscard && rule.Action != RetentionPurge) {
-		log.Printf("loom gc: skipping retention rule %q: needs MaxIdle > 0 and Action discard or purge", rule.Name)
+		log.Printf("noewright gc: skipping retention rule %q: needs MaxIdle > 0 and Action discard or purge", rule.Name)
 		return -1, nil
 	}
 	p := w.prefix

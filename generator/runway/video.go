@@ -1,4 +1,4 @@
-// Package runway provides a Loom generator adapter for RunwayML video models.
+// Package runway provides a Noewright generator adapter for RunwayML video models.
 // Generation is asynchronous: Generate submits the task and returns a
 // PendingResult; Poll resolves it when the video is ready.
 package runway

@@ -1,7 +1,7 @@
 package noewright_test
 
 // This is the facade drift guard. It fails when a top-level identifier is
-// exported from internal/engine but not re-exported by the root loom facade
+// exported from internal/engine but not re-exported by the root noewright facade
 // (aliases.go). When it fails, run `go generate ./...` to regenerate the facade.
 
 import (

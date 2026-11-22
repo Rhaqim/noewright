@@ -30,7 +30,7 @@ type Cache interface {
 	Delete(ctx context.Context, key string)
 }
 
-// defaultCacheTTL is how long immutable loom objects are cached when
+// defaultCacheTTL is how long immutable noewright objects are cached when
 // Config.CacheTTL is unset. Agents and prompts are versioned and never mutated,
 // so the default is effectively permanent — override via Config.CacheTTL only if
 // your cache backend enforces eviction.
@@ -45,7 +45,7 @@ const defaultCacheTTL = 24 * time.Hour
 // bounds that staleness. It is deliberately short.
 const defaultLatestCacheTTL = 5 * time.Second
 
-// defaultCacheKeyPrefix is the leading namespace on every cache key loom
+// defaultCacheKeyPrefix is the leading namespace on every cache key noewright
 // writes. It is configurable (Config.CacheKeyPrefix) because the Cache is
 // supplied by the embedder and may be shared with the application's own keys —
 // a fixed namespace could collide with theirs. Every key builder below leads

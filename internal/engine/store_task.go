@@ -119,7 +119,7 @@ func sqlMarkTaskReady(ctx context.Context, db *sql.DB, prefix string, id uuid.UU
 		// A resolved task must have a linked result row; refusing to flip the
 		// task to ready when none was updated avoids silently losing the asset.
 		if n, err := res.RowsAffected(); err == nil && n == 0 {
-			return fmt.Errorf("loom: task %s has no linked result row to update", id)
+			return fmt.Errorf("noewright: task %s has no linked result row to update", id)
 		}
 	}
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf(`

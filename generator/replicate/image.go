@@ -1,4 +1,4 @@
-// Package replicate provides a Loom generator adapter for Replicate image models.
+// Package replicate provides a Noewright generator adapter for Replicate image models.
 // It uses the async prediction pattern: Generate submits the job and returns a
 // PendingResult; the engine's async poller calls Poll to resolve it.
 package replicate

@@ -1,7 +1,7 @@
 package engine
 
 // bugrepro_test.go — runtime ("in production") reproductions of the six
-// bucket-1 foundational bugs (C2, C4, C5, H3, H4, H5). White-box (package loom)
+// bucket-1 foundational bugs (C2, C4, C5, H3, H4, H5). White-box (package noewright)
 // so it can reach newBus for the H5 bus test. The non-race tests (C2, C5, H5)
 // assert the DESIRED post-fix behavior, so they FAIL now (proving the bug) and
 // will PASS once fixed. The race tests (C4, H3, H4) surface a DATA RACE under

@@ -24,8 +24,8 @@ func campaignCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new campaign within a topic",
-		Example: `  loom-dnd campaign create --topic forgotten-realms --name "The Lost Mine"
-  loom-dnd campaign create --topic ravenloft --name "Curse of Strahd" --description "..."`,
+		Example: `  noewright-dnd campaign create --topic forgotten-realms --name "The Lost Mine"
+  noewright-dnd campaign create --topic ravenloft --name "Curse of Strahd" --description "..."`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if topicSlug == "" || name == "" {
 				return fmt.Errorf("--topic and --name are required")
@@ -40,7 +40,7 @@ func campaignCreateCmd() *cobra.Command {
 
 			topic, err := st.GetTopicBySlug(ctx, topicSlug)
 			if err != nil {
-				return fmt.Errorf("topic %q not found (run: loom-dnd topic list)", topicSlug)
+				return fmt.Errorf("topic %q not found (run: noewright-dnd topic list)", topicSlug)
 			}
 
 			c := &domain.Campaign{
@@ -58,11 +58,11 @@ func campaignCreateCmd() *cobra.Command {
 			fmt.Printf("  Status: %s\n", c.Status)
 			fmt.Println()
 			fmt.Printf("Next step: create your character\n")
-			fmt.Printf("  loom-dnd character create --campaign %s --username <your-username>\n", c.ID)
+			fmt.Printf("  noewright-dnd character create --campaign %s --username <your-username>\n", c.ID)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&topicSlug, "topic", "", "Topic slug (required) — see: loom-dnd topic list")
+	cmd.Flags().StringVar(&topicSlug, "topic", "", "Topic slug (required) — see: noewright-dnd topic list")
 	cmd.Flags().StringVar(&name, "name", "", "Campaign name (required)")
 	cmd.Flags().StringVar(&description, "description", "", "Campaign description")
 	return cmd
@@ -86,7 +86,7 @@ func campaignListCmd() *cobra.Command {
 				return err
 			}
 			if len(campaigns) == 0 {
-				fmt.Println("No campaigns yet. Run: loom-dnd campaign create --topic <slug> --name \"...\"")
+				fmt.Println("No campaigns yet. Run: noewright-dnd campaign create --topic <slug> --name \"...\"")
 				return nil
 			}
 

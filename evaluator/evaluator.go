@@ -1,10 +1,10 @@
-// Package evaluator is loom's EXPERIMENTAL decision primitive: a narrow
+// Package evaluator is noewright's EXPERIMENTAL decision primitive: a narrow
 // interface for asking typed questions about a piece of state and getting back
 // calibrated, structured answers that code can branch on.
 //
 // # Experimental
 //
-// This package is opt-in and not covered by loom's compatibility promise. It is
+// This package is opt-in and not covered by noewright's compatibility promise. It is
 // additive — nothing in the engine calls an Evaluator unless the application
 // configures one (Config.Evaluator) and wires it into a hook, a flow gate, or a
 // judge. With no Evaluator configured every existing code path behaves exactly
@@ -13,7 +13,7 @@
 //
 // # Why it exists
 //
-// A loom Generator PRODUCES content. Everywhere the engine needs to DECIDE
+// A noewright Generator PRODUCES content. Everywhere the engine needs to DECIDE
 // something about that content it has, until now, had two options: prompt a
 // full chat model and parse JSON back (see the judge package), or fall back to
 // string heuristics in a hook. Both are expensive or brittle. An Evaluator is

@@ -1,4 +1,4 @@
-// Package loom is a modality-agnostic procgen engine for building AI-driven
+// Package noewright is a modality-agnostic procgen engine for building AI-driven
 // interactive narratives, games, and generative platforms. It provides session
 // management, versioned agents and prompts, a hook bus for pre/post processors,
 // cost tracking with budget enforcement, branch/replay support, an entity

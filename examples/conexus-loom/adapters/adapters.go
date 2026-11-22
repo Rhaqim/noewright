@@ -193,7 +193,7 @@ func Getenv(key, fallback string) string {
 
 // OpenAIPricing returns per-model USD prices (per 1M tokens) for common OpenAI
 // models, for accurate cost tracking. Update the figures to match current rates;
-// unknown models fall back to loom's DefaultPrice. Pass to noewright.Config.Pricing.
+// unknown models fall back to noewright's DefaultPrice. Pass to noewright.Config.Pricing.
 func OpenAIPricing() map[string]noewright.ModelPrice {
 	return map[string]noewright.ModelPrice{
 		"gpt-4o-mini":  {InputPer1M: 0.15, OutputPer1M: 0.60},

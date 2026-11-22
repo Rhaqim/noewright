@@ -52,7 +52,7 @@ type Step struct {
 	ParticipantID string
 }
 
-// ExternalStep is a step whose result was written outside loom — a human game
+// ExternalStep is a step whose result was written outside noewright — a human game
 // master's narration, a moderator's edit — recorded with Engine.RecordStep.
 type ExternalStep struct {
 	// AgentSlug (with Owner and AgentVersion; 0 = latest) names the agent the
@@ -180,7 +180,7 @@ type StepRequest struct {
 	// bus is the per-turn cross-agent channel fabric, set by RunTurn.
 	bus Bus
 
-	// external, when set, is a result written outside loom: the step records
+	// external, when set, is a result written outside noewright: the step records
 	// it instead of generating (see Engine.RecordStep). author is who wrote it.
 	external Result
 	author   string

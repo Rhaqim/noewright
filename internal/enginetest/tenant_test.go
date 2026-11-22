@@ -216,7 +216,7 @@ func TestCostSavepointIsolation_Postgres(t *testing.T) {
 }
 
 // TestLineage_Postgres exercises the recursive-CTE lineage walks on Postgres.
-// BranchTree and Ancestry are the only queries in loom using WITH RECURSIVE,
+// BranchTree and Ancestry are the only queries in noewright using WITH RECURSIVE,
 // and CTE behaviour is where the two dialects most plausibly diverge — so the
 // SQLite unit tests are not sufficient evidence for a Postgres deployment.
 func TestLineage_Postgres(t *testing.T) {

@@ -31,7 +31,7 @@ type Logger = engine.Logger
 // Engine is the central object applications interact with.
 type Engine = engine.Engine
 
-// New creates and initialises a Loom engine from the given Config.
+// New creates and initialises a Noewright engine from the given Config.
 // It does NOT run schema migrations — call NewSchemaLoader(dialect).Apply(ctx, db) first.
 var New = engine.New
 
@@ -199,7 +199,7 @@ type StoredResult = engine.StoredResult
 // Steps are append-only; they form the complete timeline of a session.
 type Step = engine.Step
 
-// ExternalStep is a step whose result was written outside loom — a human game
+// ExternalStep is a step whose result was written outside noewright — a human game
 // master's narration, a moderator's edit — recorded with Engine.RecordStep.
 type ExternalStep = engine.ExternalStep
 
@@ -858,7 +858,7 @@ var ResultModel = engine.ResultModel
 // Garbage collection
 ////////////////////////////////////////////////////////////////////////////////
 
-// BranchGCConfig is a re-export of gc.Config for callers who import only loom.
+// BranchGCConfig is a re-export of gc.Config for callers who import only noewright.
 type BranchGCConfig = engine.BranchGCConfig
 
 // RetentionRule expires whole sessions by tag and idle time on each GC sweep;
@@ -986,7 +986,7 @@ var ErrSessionPinned = engine.ErrSessionPinned
 // the session and replay.
 //
 // This is deliberately a returned error rather than a diagnostics flag: a
-// caller using loom as a system of record must not proceed on state the
+// caller using noewright as a system of record must not proceed on state the
 // database does not have.
 var ErrSessionNotPersisted = engine.ErrSessionNotPersisted
 

@@ -8,7 +8,7 @@ import (
 	loomgc "github.com/rhaqim/noewright/gc"
 )
 
-// BranchGCConfig is a re-export of gc.Config for callers who import only loom.
+// BranchGCConfig is a re-export of gc.Config for callers who import only noewright.
 type BranchGCConfig = loomgc.Config
 
 // RetentionRule expires whole sessions by tag and idle time on each GC sweep;

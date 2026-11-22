@@ -62,7 +62,7 @@ func (s *stepService) runStep(ctx context.Context, session *Session, req StepReq
 		var err error
 		agent, err = s.e.agents.Get(ctx, req.Owner, req.AgentSlug, req.AgentVersion)
 		if err != nil {
-			return nil, fmt.Errorf("loom: resolve agent %q: %w", req.AgentSlug, err)
+			return nil, fmt.Errorf("noewright: resolve agent %q: %w", req.AgentSlug, err)
 		}
 	}
 
@@ -124,7 +124,7 @@ func (s *stepService) runStep(ctx context.Context, session *Session, req StepReq
 		if IsSkip(err) {
 			return nil, err // propagate skip to caller
 		}
-		return nil, fmt.Errorf("loom: pre-hook: %w", err)
+		return nil, fmt.Errorf("noewright: pre-hook: %w", err)
 	}
 
 	// Build GenerateRequest (renders user template, loads system prompt) using
@@ -285,7 +285,7 @@ func (s *stepService) runStep(ctx context.Context, session *Session, req StepReq
 			break // success
 		}
 		if !IsRetry(hookErr) {
-			return nil, fmt.Errorf("loom: post-hook: %w", hookErr)
+			return nil, fmt.Errorf("noewright: post-hook: %w", hookErr)
 		}
 
 		var rerr *RetryError
@@ -321,7 +321,7 @@ func (s *stepService) runStep(ctx context.Context, session *Session, req StepReq
 
 		// RetryDiscard: exhausting the budget fails the step.
 		if attempt == maxRetries {
-			return nil, fmt.Errorf("loom: max retries (%d) exceeded: %w", maxRetries, hookErr)
+			return nil, fmt.Errorf("noewright: max retries (%d) exceeded: %w", maxRetries, hookErr)
 		}
 		req.annotations = append(req.annotations, ann)
 	}
@@ -330,7 +330,7 @@ func (s *stepService) runStep(ctx context.Context, session *Session, req StepReq
 	// a keepable draft is the one keep-best failure mode.
 	if keepBest {
 		if !haveBest {
-			return nil, fmt.Errorf("loom: keep-best produced no usable result after %d attempts", maxRetries+1)
+			return nil, fmt.Errorf("noewright: keep-best produced no usable result after %d attempts", maxRetries+1)
 		}
 		result = best
 		diagnostics["kept_score"] = bestScore
@@ -339,13 +339,13 @@ func (s *stepService) runStep(ctx context.Context, session *Session, req StepReq
 	return s.persist(ctx, session, stepSession, stepBase, agent, genSlug, genReq, req, result, diagnostics, start)
 }
 
-// record runs a step whose result was written outside loom. Pre- and
+// record runs a step whose result was written outside noewright. Pre- and
 // post-hooks run as for a generated step (a post-hook may still reject it, but
 // cannot ask for a retry: there is no generator to re-run), the state merge and
 // checkpoint are identical, and no cost row is written.
 func (s *stepService) record(ctx context.Context, session *Session, agent *Agent, req StepRequest, start time.Time) (*Step, error) {
 	if req.external.Status() != ResultStatusReady || req.external.TaskHandle() != nil {
-		return nil, fmt.Errorf("loom: a recorded step needs a ready result, got status %q", req.external.Status())
+		return nil, fmt.Errorf("noewright: a recorded step needs a ready result, got status %q", req.external.Status())
 	}
 	s.e.mu.RLock()
 	stepSession := session.forStep()
@@ -357,14 +357,14 @@ func (s *stepService) record(ctx context.Context, session *Session, agent *Agent
 		if IsSkip(err) {
 			return nil, err
 		}
-		return nil, fmt.Errorf("loom: pre-hook: %w", err)
+		return nil, fmt.Errorf("noewright: pre-hook: %w", err)
 	}
 	result, err := s.e.hooks.RunPost(ctx, &req, req.external)
 	if err != nil {
 		if IsRetry(err) {
-			return nil, fmt.Errorf("loom: post-hook asked to retry a recorded step, which has no generator to re-run: %w", err)
+			return nil, fmt.Errorf("noewright: post-hook asked to retry a recorded step, which has no generator to re-run: %w", err)
 		}
-		return nil, fmt.Errorf("loom: post-hook: %w", err)
+		return nil, fmt.Errorf("noewright: post-hook: %w", err)
 	}
 	genReq := GenerateRequest{SessionID: session.ID, AgentID: agent.ID, Inputs: req.Inputs, ParamsMap: req.Params}
 	return s.persist(ctx, session, stepSession, stepBase, agent, "", genReq, req, result, map[string]any{"recorded": true}, start)
@@ -444,7 +444,7 @@ func (s *stepService) persist(ctx context.Context, session, stepSession *Session
 	if err := insertStep(ctx, s.e.db, s.e.prefix, step, &session.State, cost); err != nil {
 		var cre *costRecordError
 		if !errors.As(err, &cre) {
-			return nil, fmt.Errorf("loom: persist step: %w", err)
+			return nil, fmt.Errorf("noewright: persist step: %w", err)
 		}
 		s.e.log.Error("record cost", "step_id", step.ID, "err", err)
 	}
@@ -516,11 +516,11 @@ func (s *stepService) resolveSystemPrompt(ctx context.Context, owner string, ref
 func (e *Engine) confinedPromptFile(file string) (string, error) {
 	root := e.cfg.PromptFileRoot
 	if root == "" {
-		return "", fmt.Errorf("loom: file-backed prompts are disabled; set Config.PromptFileRoot to enable them")
+		return "", fmt.Errorf("noewright: file-backed prompts are disabled; set Config.PromptFileRoot to enable them")
 	}
 	absRoot, err := filepath.Abs(root)
 	if err != nil {
-		return "", fmt.Errorf("loom: prompt file root: %w", err)
+		return "", fmt.Errorf("noewright: prompt file root: %w", err)
 	}
 	// Resolve symlinks on the root so the containment check compares real paths.
 	if resolved, err := filepath.EvalSymlinks(absRoot); err == nil {
@@ -541,7 +541,7 @@ func (e *Engine) confinedPromptFile(file string) (string, error) {
 
 	rootWithSep := absRoot + string(os.PathSeparator)
 	if target != absRoot && !strings.HasPrefix(target, rootWithSep) {
-		return "", fmt.Errorf("loom: prompt file %q is outside PromptFileRoot", file)
+		return "", fmt.Errorf("noewright: prompt file %q is outside PromptFileRoot", file)
 	}
 	return target, nil
 }

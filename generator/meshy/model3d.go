@@ -1,4 +1,4 @@
-// Package meshy provides a Loom generator adapter for Meshy's text-to-3D and
+// Package meshy provides a Noewright generator adapter for Meshy's text-to-3D and
 // image-to-3D APIs. It produces GLB-backed Model3DResults asynchronously.
 package meshy
 
@@ -167,7 +167,7 @@ func (g *Model3DGenerator) Poll(ctx context.Context, handle noewright.TaskHandle
 	switch task.Status {
 	case "SUCCEEDED":
 		if kind == "text" {
-			// The returned handle must be persisted by the poller (Loom does);
+			// The returned handle must be persisted by the poller (Noewright does);
 			// otherwise the next poll would see the finished preview again and
 			// start — and bill — another refine.
 			body := make(map[string]any, len(refine)+2)

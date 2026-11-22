@@ -1,7 +1,7 @@
 DSN ?= postgres://loom:loom@localhost:5432/loom?sslmode=disable
 export DND_DSN := $(DSN)
 
-BIN := bin/loom-dnd
+BIN := bin/noewright-dnd
 
 .PHONY: help up down build migrate topic-list user-list campaign-list play clean
 
@@ -11,7 +11,7 @@ help: ## Show this help
 
 # ── Infrastructure ─────────────────────────────────────────────────────────────
 
-up: ## Start PostgreSQL 16 via Docker (from the loom root)
+up: ## Start PostgreSQL 16 via Docker (from the noewright root)
 	docker compose -f ../../docker-compose.yml up -d
 	@echo "Waiting for Postgres..."
 	@until docker compose -f ../../docker-compose.yml exec postgres \
@@ -23,14 +23,14 @@ down: ## Stop PostgreSQL
 
 # ── Build ───────────────────────────────────────────────────────────────────────
 
-build: ## Build the loom-dnd binary to bin/loom-dnd
+build: ## Build the noewright-dnd binary to bin/noewright-dnd
 	@mkdir -p bin
 	go build -o $(BIN) .
 	@echo "Built $(BIN)"
 
 # ── Database ───────────────────────────────────────────────────────────────────
 
-migrate: build ## Apply loom + DND schemas to the database
+migrate: build ## Apply noewright + DND schemas to the database
 	$(BIN) migrate
 
 # ── Quick-start: create a full session in one command ──────────────────────────

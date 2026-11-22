@@ -73,7 +73,7 @@ func (h *Handler) CreateTopic(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Seed the narrator agent in loom for this topic.
+	// Seed the narrator agent in noewright for this topic.
 	agentSlug, err := h.engine.SeedStoryAgent(r.Context(), topic)
 	if err != nil {
 		h.log.Error("seed story agent", "topic", topic.Slug, "err", err)

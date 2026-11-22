@@ -1,14 +1,14 @@
-// Command loom-dnd is a solo D&D experience powered by the loom procgen engine.
+// Command noewright-dnd is a solo D&D experience powered by the noewright procgen engine.
 //
 // Usage:
 //
 //	export DND_DSN="postgres://loom:loom@localhost:5432/loom?sslmode=disable"
-//	loom-dnd migrate
-//	loom-dnd topic create --name "Forgotten Realms" --setting high-fantasy --edition 5e
-//	loom-dnd user create --username thorin
-//	loom-dnd campaign create --topic forgotten-realms --name "The Lost Mine of Phandelver"
-//	loom-dnd character create --username thorin --campaign <id>
-//	loom-dnd play --username thorin --campaign <id>
+//	noewright-dnd migrate
+//	noewright-dnd topic create --name "Forgotten Realms" --setting high-fantasy --edition 5e
+//	noewright-dnd user create --username thorin
+//	noewright-dnd campaign create --topic forgotten-realms --name "The Lost Mine of Phandelver"
+//	noewright-dnd character create --username thorin --campaign <id>
+//	noewright-dnd play --username thorin --campaign <id>
 package main
 
 import (
@@ -26,20 +26,20 @@ import (
 
 func main() {
 	root := &cobra.Command{
-		Use:   "loom-dnd",
-		Short: "A solo D&D experience powered by the loom procgen engine",
-		Long: `loom-dnd lets you learn and play Dungeons & Dragons solo with an AI Dungeon Master.
+		Use:   "noewright-dnd",
+		Short: "A solo D&D experience powered by the noewright procgen engine",
+		Long: `noewright-dnd lets you learn and play Dungeons & Dragons solo with an AI Dungeon Master.
 
 Set DND_DSN to your PostgreSQL connection string:
   export DND_DSN="postgres://loom:loom@localhost:5432/loom?sslmode=disable"
 
 Then run:
-  loom-dnd migrate                        # set up the database
-  loom-dnd topic create --name "..."      # create a D&D setting
-  loom-dnd user create --username <name>  # create your player account
-  loom-dnd campaign create ...            # start a new campaign
-  loom-dnd character create ...           # create your character
-  loom-dnd play ...                       # start playing!`,
+  noewright-dnd migrate                        # set up the database
+  noewright-dnd topic create --name "..."      # create a D&D setting
+  noewright-dnd user create --username <name>  # create your player account
+  noewright-dnd campaign create ...            # start a new campaign
+  noewright-dnd character create ...           # create your character
+  noewright-dnd play ...                       # start playing!`,
 	}
 
 	root.PersistentFlags().String("dsn", "", "PostgreSQL DSN (overrides DND_DSN env var)")

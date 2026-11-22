@@ -189,7 +189,7 @@ func insertCostSavepoint(ctx context.Context, tx *sql.Tx, prefix string, rec Cos
 // savepoint. The step is still committable; the caller logs and continues.
 type costRecordError struct{ err error }
 
-func (e *costRecordError) Error() string { return "loom: record cost: " + e.err.Error() }
+func (e *costRecordError) Error() string { return "noewright: record cost: " + e.err.Error() }
 func (e *costRecordError) Unwrap() error { return e.err }
 
 func sqlInsertResult(ctx context.Context, db execer, prefix string, step *Step) error {

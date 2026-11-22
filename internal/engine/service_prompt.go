@@ -77,7 +77,7 @@ func (s *promptService) Versions(ctx context.Context, owner, slug string) ([]*Pr
 
 func (s *promptService) Delete(ctx context.Context, owner, slug string, version int) error {
 	if version < 1 {
-		return fmt.Errorf("loom: delete prompt %q: an explicit version >= 1 is required", slug)
+		return fmt.Errorf("noewright: delete prompt %q: an explicit version >= 1 is required", slug)
 	}
 	// Resolve the row id first so we can also evict the by-id cache that the
 	// agent-build path populates (cacheKey "prompt-id").

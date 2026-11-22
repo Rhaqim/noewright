@@ -18,7 +18,7 @@ import (
 // The map is an ordered list of agents: the first is the lead, the rest are
 // followers (matching the runtime Flow's lead + concurrent followers). Owner is
 // an opaque scope the embedding application controls (e.g. a tenant/studio id);
-// "" is the global default. loom itself stays tenancy-agnostic — owner is just a
+// "" is the global default. noewright itself stays tenancy-agnostic — owner is just a
 // string it filters on.
 
 // FlowRecord is a persisted, versioned agent map.
@@ -204,10 +204,10 @@ type flowService struct{ e *Engine }
 
 func (s *flowService) Create(ctx context.Context, r *FlowRecord) error {
 	if len(r.Agents) == 0 {
-		return fmt.Errorf("loom: flow %q: needs at least one agent (the lead)", r.Slug)
+		return fmt.Errorf("noewright: flow %q: needs at least one agent (the lead)", r.Slug)
 	}
 	if r.Version < 1 {
-		return fmt.Errorf("loom: flow %q: version must be >= 1 (0 is reserved for latest resolution)", r.Slug)
+		return fmt.Errorf("noewright: flow %q: version must be >= 1 (0 is reserved for latest resolution)", r.Slug)
 	}
 	if r.ID == uuid.Nil {
 		r.ID = uuid.New()
@@ -264,7 +264,7 @@ func (s *flowService) LatestActive(ctx context.Context, owner, slug string) (*Fl
 
 func (s *flowService) SetActive(ctx context.Context, owner, slug string, version int) error {
 	if version < 1 {
-		return fmt.Errorf("loom: set active flow %q: an explicit version >= 1 is required", slug)
+		return fmt.Errorf("noewright: set active flow %q: an explicit version >= 1 is required", slug)
 	}
 	if err := sqlSetFlowActive(ctx, s.e.db, s.e.prefix, owner, slug, version); err != nil {
 		return err
@@ -281,7 +281,7 @@ func (s *flowService) List(ctx context.Context, owner, category string) ([]*Flow
 
 func (s *flowService) Delete(ctx context.Context, owner, slug string, version int) error {
 	if version < 1 {
-		return fmt.Errorf("loom: delete flow %q: an explicit version >= 1 is required", slug)
+		return fmt.Errorf("noewright: delete flow %q: an explicit version >= 1 is required", slug)
 	}
 	if err := sqlDeleteFlow(ctx, s.e.db, s.e.prefix, owner, slug, version); err != nil {
 		return err
@@ -530,7 +530,7 @@ func (s *flowService) agentConsumes(ctx context.Context, owner string, e FlowAge
 func (e *Engine) RunTurnBySlug(ctx context.Context, session *Session, owner, slug string, version int, req TurnRequest) (*Turn, error) {
 	rec, err := e.flows.Get(ctx, owner, slug, version)
 	if err != nil {
-		return nil, fmt.Errorf("loom: load flow %q: %w", slug, err)
+		return nil, fmt.Errorf("noewright: load flow %q: %w", slug, err)
 	}
 	// A retired/disabled flow version must not execute. With version 0 this is
 	// unreachable — Get already resolved the latest ACTIVE version — so it only
@@ -538,7 +538,7 @@ func (e *Engine) RunTurnBySlug(ctx context.Context, session *Session, owner, slu
 	// caller mistake rather than a draft taking the slug down. Publish with
 	// Flows().SetActive.
 	if !rec.IsActive {
-		return nil, fmt.Errorf("loom: flow %q v%d is not active (publish it with Flows().SetActive)", slug, rec.Version)
+		return nil, fmt.Errorf("noewright: flow %q v%d is not active (publish it with Flows().SetActive)", slug, rec.Version)
 	}
 	req.Flow = rec.Flow()
 	// Resolve the flow's agents within the flow's own owner scope, so a

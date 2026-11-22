@@ -13,7 +13,7 @@ help: ## Show this help
 
 # ── Infrastructure ──────────────────────────────────────────────────────────────
 
-up: ## Start PostgreSQL 16 via Docker (from the loom root)
+up: ## Start PostgreSQL 16 via Docker (from the noewright root)
 	docker compose -f ../../../docker-compose.yml up -d
 	@echo "Waiting for Postgres..."
 	@until docker compose -f ../../../docker-compose.yml exec postgres \

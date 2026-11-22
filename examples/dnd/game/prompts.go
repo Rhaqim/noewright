@@ -3,7 +3,7 @@ package game
 import "fmt"
 
 // DMSystemPrompt returns the system prompt for the DM agent given a topic setting.
-// The system prompt is stored in loom's prompts table and referenced by the DM agent.
+// The system prompt is stored in noewright's prompts table and referenced by the DM agent.
 func DMSystemPrompt(topicName, setting, edition string) string {
 	return fmt.Sprintf(`You are the Dungeon Master for a %s D&D %s campaign set in %s.
 
@@ -35,7 +35,7 @@ RULES (edition: %s):
 
 // DMUserTemplate returns the Go text/template used as the user-turn template.
 // It injects current character state and the player's action.
-// loom will execute this template with the session + action as data.
+// noewright will execute this template with the session + action as data.
 func DMUserTemplate() string {
 	return `Character: {{index .Vars "character_name"}} | {{index .Vars "character_race"}} {{index .Vars "character_class"}} Lvl {{index .Vars "character_level"}} ({{index .Vars "character_background"}})
 HP: {{index .Vars "current_hp"}}/{{index .Vars "max_hp"}} | AC: {{index .Vars "armor_class"}} | Prof: +{{index .Vars "proficiency"}} | Gold: {{index .Vars "gold"}} gp

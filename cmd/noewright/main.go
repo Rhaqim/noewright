@@ -1,8 +1,8 @@
-// noewright is the command-line interface for the Loom procgen engine.
+// noewright is the command-line interface for the Noewright procgen engine.
 //
 // Commands:
 //
-//	migrate   Apply the Loom database schema
+//	migrate   Apply the Noewright database schema
 //	seed      Seed agents, prompts, and generators from a YAML file
 //	test      Run a YAML test plan against the engine
 package main
@@ -27,7 +27,7 @@ import (
 func main() {
 	root := &cobra.Command{
 		Use:   "noewright",
-		Short: "Loom procgen engine CLI",
+		Short: "Noewright procgen engine CLI",
 	}
 	root.PersistentFlags().String("dsn", "", "PostgreSQL connection string. WARNING: visible to other users via 'ps'/'/proc'; prefer NOEWRIGHT_DSN or --dsn-file")
 	root.PersistentFlags().String("dsn-file", "", "path to a file containing the PostgreSQL connection string (keeps credentials out of the process arguments)")
@@ -83,7 +83,7 @@ func openDB(cmd *cobra.Command) (*sql.DB, error) {
 func migrateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "migrate",
-		Short: "Apply Loom schema to the database",
+		Short: "Apply Noewright schema to the database",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			db, err := openDB(cmd)
 			if err != nil {

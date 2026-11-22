@@ -1,4 +1,4 @@
-// Command media-story runs a Go-template web UI for a Loom-powered, multi-modal
+// Command media-story runs a Go-template web UI for a Noewright-powered, multi-modal
 // narrative. It uses local generators by default so every modality is runnable
 // without credentials; setting MESHY_API_KEY adds a real 3D-generation agent.
 package main
@@ -110,7 +110,7 @@ func main() {
 	}
 	a, err := newApp(ctx, db, gens, defaultAgents(hasMeshy), noewright.PollerConfig{
 		// Meshy's preview and refine stages each take minutes. Poll every 10s
-		// and allow 90 polls per stage (Loom resets the count when a job moves
+		// and allow 90 polls per stage (Noewright resets the count when a job moves
 		// to its next stage), i.e. up to 15 minutes each.
 		Interval: 10 * time.Second, Workers: 1, MaxAttempts: 90,
 	})
@@ -265,7 +265,7 @@ func (a *app) generate(w http.ResponseWriter, r *http.Request) {
 }
 
 // task shows an async job's current state, reloading itself while it is
-// pending so the generated asset appears once Loom's poller resolves it.
+// pending so the generated asset appears once Noewright's poller resolves it.
 func (a *app) task(w http.ResponseWriter, r *http.Request) {
 	page := pageData{Title: storyTitle, Agents: a.sortedAgents(), Prompt: defaultPrompt}
 	id, err := uuid.Parse(r.PathValue("id"))

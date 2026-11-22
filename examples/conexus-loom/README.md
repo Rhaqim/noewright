@@ -1,8 +1,8 @@
 # conexus_refactor
 
-Conexus's interactive-fiction engine, **refactored to run on [loom](../../)**. Same
+Conexus's interactive-fiction engine, **refactored to run on [Noewright](../../)**. Same
 architecture as the monorepo (migration → multi-agent turn → QA → state → media),
-but loom is the underlying engine and every monorepo service is reached through an
+but Noewright is the underlying engine and every monorepo service is reached through an
 **interface (port)** so you can plug the real ones in later. It ships a
 **standalone, runnable `main.go`** you can play today — with OpenAI or fully
 offline.
@@ -62,7 +62,7 @@ If a provider rejects `response_format` entirely, remove the one marked block in
 Each turn prints per-step spend (`💸 513→206 tokens · ~$0.0011 this step · ~$X
 total`) and appends an investor-friendly Markdown record — prose, choices,
 art/music direction, and spend — to `playthrough.md` (`-transcript <path>`, or
-`-transcript ""` to disable). loom's own `Cost()` report is shown as a cross-check
+`-transcript ""` to disable). Noewright's own `Cost()` report is shown as a cross-check
 at the end. The whole feature is isolated in
 [cmd/play/transcript.go](cmd/play/transcript.go) and guarded by nil checks, so you
 can drop it later by removing the lines marked `// transcript`.
@@ -73,7 +73,7 @@ The Quality Engine has two tiers. `narrative/quality.go` is the deterministic on
 Slop Bans (21 hard-coded cliché phrases) and a Staleness Detector (word-trigram
 Jaccard). It is free and catches what it can name.
 
-`narrative/semantic.go` is the second tier, built on loom's experimental
+`narrative/semantic.go` is the second tier, built on Noewright's experimental
 [evaluation subsystem](../../README.md#evaluations-experimental). It asks three
 questions about each draft in **one** call — is it cliché, does it retell the last
 scene, how good is the prose (0..3 rubric) — and turns the answers into a retry with
@@ -95,7 +95,7 @@ CONEXUS_PROVIDER=stub CONEXUS_EVALUATOR=stub go run ./cmd/play
 CONEXUS_EVALUATOR=off go run ./cmd/play
 ```
 
-The layering is the point: **loom owns the mechanism** (the `Evaluator` interface,
+The layering is the point: **Noewright owns the mechanism** (the `Evaluator` interface,
 the batched call, `EvalGate` turning answers into retries) and knows nothing about
 fiction. **This example owns the questions** — what "slop", "stale" and "good prose"
 mean here. Questions are prompts, and prompts have always lived in `narrative/`.
@@ -105,17 +105,17 @@ mean here. Questions are prompts, and prompts have always lived in `narrative/`.
 | Conexus monorepo | here | engine |
 |---|---|---|
 | `StoryOrchestrator.PlayTurn` | [engine/engine.go](engine/engine.go) | `noewright.RunTurn` |
-| Author / Logician / Sensory `ai.Service` agents | [narrative/](narrative) agents + prompts | loom `Agent` + `Generator` |
-| embedded `const` system prompts | **files** in [narrative/prompts/](narrative/prompts) | loom versioned `Prompt` |
-| topic → world migration | [migration/](migration) | migrate agent via loom |
-| QA validators (dedupe, JSON, option count) | [narrative QAHook](narrative/narrative.go) | loom post-hook + `ErrRetryWith` |
-| pgvector memory vault | `ports.MemoryVault` → [adapters.KeywordMemory](adapters/adapters.go) | loom pre-hook injection |
+| Author / Logician / Sensory `ai.Service` agents | [narrative/](narrative) agents + prompts | Noewright `Agent` + `Generator` |
+| embedded `const` system prompts | **files** in [narrative/prompts/](narrative/prompts) | Noewright versioned `Prompt` |
+| topic → world migration | [migration/](migration) | migrate agent via Noewright |
+| QA validators (dedupe, JSON, option count) | [narrative QAHook](narrative/narrative.go) | Noewright post-hook + `ErrRetryWith` |
+| pgvector memory vault | `ports.MemoryVault` → [adapters.KeywordMemory](adapters/adapters.go) | Noewright pre-hook injection |
 | multimedia worker queue | `ports.MultimediaQueue` → `LogMultimedia` | (app layer) |
 | plugins (combat/multiplayer) | `ports.Plugin`/`PluginRegistry` | pre/post-process seams |
 | per-user model prefs | `ports.AIPreferences` | per-request override seam |
 | telemetry | `ports.Logger` | — |
-| `ai.ExecuteWithRetry`, cost, branching | — | **free from loom** |
-| — (new) | [narrative/semantic.go](narrative/semantic.go) | loom `EvalGate` + `Evaluator` *(experimental)* |
+| `ai.ExecuteWithRetry`, cost, branching | — | **free from Noewright** |
+| — (new) | [narrative/semantic.go](narrative/semantic.go) | Noewright `EvalGate` + `Evaluator` *(experimental)* |
 
 The difference from the small `conexus-loom` demo: this is a full, layered project
 (`domain` / `ports` / `adapters` / `narrative` / `migration` / `engine` / `cmd`),
@@ -140,7 +140,7 @@ adapter never touches the engine.
 ## Versioned prompts (iterate to find the best)
 
 Prompts live as files named `<agent>-<sys|user>.v<N>.txt` in
-[narrative/prompts/](narrative/prompts). On startup every file is seeded into loom
+[narrative/prompts/](narrative/prompts). On startup every file is seeded into Noewright
 as an immutable, versioned `Prompt`, and one agent version is created per `N`.
 
 To try a new Author prompt for this story:
@@ -210,12 +210,12 @@ sensory `image.prompt` / `music.mood`), so either version runs offline or live.
 ## A turn, end to end
 
 1. **Migration** (first run): the migrate agent turns `block.txt` into a `World` +
-   `Constitution`, stored in the loom session.
+   `Constitution`, stored in the Noewright session.
 2. **PlayTurn** → `noewright.RunTurn(Flow)`:
    - **pre-hook** recalls relevant facts from memory into the turn,
    - **Author** (lead) streams prose,
    - **Logician** + **Sensory** (followers) analyse it in parallel,
-   - **QA post-hook** validates the Logician's JSON/options and makes loom retry
+   - **QA post-hook** validates the Logician's JSON/options and makes Noewright retry
      the agent on failure (you'll see `· QA retried`),
    - the state patch is applied, facts are stored to memory, the image prompt is
      enqueued to the media queue, and the session is saved.
@@ -223,7 +223,7 @@ sensory `image.prompt` / `music.mood`), so either version runs offline or live.
 
 ## Cross-agent communication, params, validation, pricing
 
-Recent loom additions, all wired here:
+Recent Noewright additions, all wired here:
 
 - **Cross-agent channels (`Bus`).** Every turn has a channel fabric on
   `GenerateRequest.Bus`; agents (and hooks, via `req.Bus()`) `Publish`/`Subscribe`
@@ -234,7 +234,7 @@ Recent loom additions, all wired here:
   max_tokens, …) fold onto the typed params, the rest reach the generator
   (`ParamsMap`) and templates (`{{.Params.x}}`). Here: per-agent temperature
   (author 0.85, logician 0.2, sensory 0.5) + turn-wide `tension`.
-- **Output schema validation.** With a real provider (`ValidateSchemas`), loom's
+- **Output schema validation.** With a real provider (`ValidateSchemas`), Noewright's
   `SchemaValidationPostHook` validates each agent's JSON against the schema stored
   on its prompt and auto-retries on violation. Off for the stub (its reduced
   output intentionally doesn't satisfy the full v2 schemas).
@@ -244,7 +244,7 @@ Recent loom additions, all wired here:
 
 ## Notes
 
-- The OpenAI path uses streaming for the Author (loom's SSE streaming was fixed as
+- The OpenAI path uses streaming for the Author (Noewright's SSE streaming was fixed as
   part of this work) and sync JSON for the Logician/Sensory/migration, parsed with
   fence-stripping and a validating retry — robust across `gpt-4o-mini` and up.
 - `db.sqlite`, `.env` are git-ignored.

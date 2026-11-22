@@ -59,7 +59,7 @@ func sqlQueryAgentLatest(ctx context.Context, db *sql.DB, prefix, owner, slug st
 }
 
 // sqlQueryAgentByID is intentionally not owner-filtered: the row UUID is
-// globally unique and this resolves loom's own FK references.
+// globally unique and this resolves noewright's own FK references.
 func sqlQueryAgentByID(ctx context.Context, db *sql.DB, prefix string, id uuid.UUID) (*Agent, error) {
 	row := db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT %s

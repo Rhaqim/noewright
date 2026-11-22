@@ -24,9 +24,9 @@ func topicCreateCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a new D&D topic/setting",
-		Example: `  loom-dnd topic create --name "Forgotten Realms" --setting high-fantasy --edition 5e
-  loom-dnd topic create --name "Ravenloft" --setting horror --edition 5e
-  loom-dnd topic create --name "Eberron" --setting steampunk --edition 5e`,
+		Example: `  noewright-dnd topic create --name "Forgotten Realms" --setting high-fantasy --edition 5e
+  noewright-dnd topic create --name "Ravenloft" --setting horror --edition 5e
+  noewright-dnd topic create --name "Eberron" --setting steampunk --edition 5e`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if name == "" {
 				return fmt.Errorf("--name is required")
@@ -49,7 +49,7 @@ func topicCreateCmd() *cobra.Command {
 				return fmt.Errorf("create topic: %w", err)
 			}
 
-			// Seed the DM agent for this topic in loom.
+			// Seed the DM agent for this topic in noewright.
 			agentSlug, err := e.SeedDMAgent(ctx, t)
 			if err != nil {
 				return fmt.Errorf("seed DM agent: %w", err)
@@ -89,7 +89,7 @@ func topicListCmd() *cobra.Command {
 				return err
 			}
 			if len(topics) == 0 {
-				fmt.Println("No topics yet. Run: loom-dnd topic create --name \"...\"")
+				fmt.Println("No topics yet. Run: noewright-dnd topic create --name \"...\"")
 				return nil
 			}
 			fmt.Printf("%-20s  %-15s  %-6s  %s\n", "SLUG", "SETTING", "EDITION", "NAME")

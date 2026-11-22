@@ -57,7 +57,7 @@ func (h *Handler) CreateStory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Ensure the narrator agent exists in loom (idempotent).
+	// Ensure the narrator agent exists in noewright (idempotent).
 	agentSlug, err := h.engine.SeedStoryAgent(r.Context(), topic)
 	if err != nil {
 		h.log.Error("seed story agent", "topic", topic.Slug, "err", err)

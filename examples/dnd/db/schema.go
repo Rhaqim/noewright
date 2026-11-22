@@ -1,7 +1,7 @@
 package db
 
 // ddl contains all idempotent DDL for the DND application layer.
-// These tables are separate from loom's own schema (prefixed loom_).
+// These tables are separate from noewright's own schema (prefixed loom_).
 var ddl = []string{
 	// Enable UUID generation if not already available.
 	`CREATE EXTENSION IF NOT EXISTS "pgcrypto"`,

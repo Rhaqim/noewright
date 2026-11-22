@@ -1,6 +1,6 @@
-# loom-dnd
+# noewright-dnd
 
-A solo Dungeons & Dragons experience powered by the [loom](../../) procgen engine.
+A solo Dungeons & Dragons experience powered by the [Noewright](../../) procgen engine.
 
 Play D&D by yourself — with an AI Dungeon Master — to learn the game before joining a group or campaign. You can also *be* the Dungeon Master by describing the world yourself.
 
@@ -10,21 +10,21 @@ Play D&D by yourself — with an AI Dungeon Master — to learn the game before 
 
 ```sh
 ┌──────────────────────────────────────────────────────────────┐
-│                        loom-dnd                              │
+│                        noewright-dnd                              │
 │                                                              │
 │  dnd_topics ──► dnd_campaigns ──► dnd_characters             │
 │       │               │                  │                   │
-│       │ (DM agent)    │ (loom session)   │ (session.Vars)    │
+│       │ (DM agent)    │ (noewright session)   │ (session.Vars)    │
 │       ▼               ▼                  ▼                   │
 │  ┌─────────────────────────────────────────────────────┐     │
-│  │                  loom engine                        │     │
+│  │                  noewright engine                        │     │
 │  │  prompt registry · agent registry · session store   │     │
 │  │  RunStep → generator (OpenAI / Anthropic / echo)    │     │
 │  └─────────────────────────────────────────────────────┘     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Each **topic** (setting) gets its own DM agent seeded in loom with a tailored system prompt. Each **campaign** maps 1-to-1 with a loom `Session` — so the DM always has your full history. Your **character sheet** is injected into every turn via `session.State.Vars`, keeping the DM honest about your HP, inventory, and stats.
+Each **topic** (setting) gets its own DM agent seeded in Noewright with a tailored system prompt. Each **campaign** maps 1-to-1 with a Noewright `Session` — so the DM always has your full history. Your **character sheet** is injected into every turn via `session.State.Vars`, keeping the DM honest about your HP, inventory, and stats.
 
 ---
 
@@ -39,7 +39,7 @@ Each **topic** (setting) gets its own DM agent seeded in loom with a tailored sy
 ## Quick start
 
 ```bash
-# 1. Start the database (runs Postgres 16 via Docker from the loom root)
+# 1. Start the database (runs Postgres 16 via Docker from the noewright root)
 make up
 
 # 2. One-shot setup: migrate + create a topic, user, and campaign
@@ -81,8 +81,8 @@ The engine picks the best available generator automatically (Anthropic > OpenAI 
 make up                    Start PostgreSQL 16 via Docker
 make down                  Stop PostgreSQL
 
-make build                 Build the loom-dnd binary
-make migrate               Apply loom + DND schemas
+make build                 Build the noewright-dnd binary
+make migrate               Apply noewright + DND schemas
 
 make quickstart            One-shot setup (migrate + topic + user + campaign)
 make list                  List topics, users, and campaigns
@@ -123,25 +123,25 @@ make play USERNAME=alice CAMPAIGN_ID=<uuid>
 # Full form (bypassing Make)
 export DND_DSN="postgres://loom:loom@localhost:5432/loom?sslmode=disable"
 
-loom-dnd migrate
+noewright-dnd migrate
 
-loom-dnd topic create --name "Eberron" --setting steampunk --edition 5e
-loom-dnd topic list
+noewright-dnd topic create --name "Eberron" --setting steampunk --edition 5e
+noewright-dnd topic list
 
-loom-dnd user create --username thorin
-loom-dnd user list
+noewright-dnd user create --username thorin
+noewright-dnd user list
 
-loom-dnd campaign create --topic eberron --name "Shadows of Sharn"
-loom-dnd campaign list
+noewright-dnd campaign create --topic eberron --name "Shadows of Sharn"
+noewright-dnd campaign list
 
-loom-dnd character create \
+noewright-dnd character create \
   --username thorin --campaign <uuid> \
   --name "Thorin Ironforge" --race Dwarf --class Fighter \
   --background Soldier --roll-stats
 
-loom-dnd character sheet --username thorin --campaign <uuid>
+noewright-dnd character sheet --username thorin --campaign <uuid>
 
-loom-dnd play --username thorin --campaign <uuid>
+noewright-dnd play --username thorin --campaign <uuid>
 ```
 
 ---

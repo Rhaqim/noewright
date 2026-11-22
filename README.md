@@ -1,11 +1,17 @@
-# loom
+# Noewright
+
+*The runtime for programmable intelligence.*
 
 A modality-agnostic engine for orchestrating multi-agent AI applications.
 
-Loom handles the infrastructure — session management, versioned agents and prompts, hook pipelines, cost tracking, branch/replay, LLM-as-judge scoring, and a first-class test harness — so you can focus on your product, not the plumbing.
+> **Formerly loom.** The module moved from `github.com/rhaqim/loom` to
+> `github.com/rhaqim/noewright`. Existing databases keep working unchanged; see
+> [MIGRATING.md](MIGRATING.md).
 
-> **Using an AI assistant (Claude, Copilot, Cursor, …) to build with loom?** Point it at
-> [`llms.txt`](llms.txt) — a self-contained, task-oriented guide to loom's API written for LLMs.
+Noewright handles the infrastructure — session management, versioned agents and prompts, hook pipelines, cost tracking, branch/replay, LLM-as-judge scoring, and a first-class test harness — so you can focus on your product, not the plumbing.
+
+> **Using an AI assistant (Claude, Copilot, Cursor, …) to build with Noewright?** Point it at
+> [`llms.txt`](llms.txt) — a self-contained, task-oriented guide to Noewright's API written for LLMs.
 
 ---
 
@@ -60,7 +66,7 @@ func main() {
 
     ctx := context.Background()
 
-    // Apply the loom schema (idempotent).
+    // Apply the noewright schema (idempotent).
     schema.NewLoader(schema.DialectPostgres).Apply(ctx, db)
 
     // Create the engine.
@@ -415,7 +421,7 @@ result, _ := pair.Compare(ctx, judge.PairwiseRequest{
 ### Evaluations (experimental)
 
 A `Generator` **produces** content. An `Evaluator` **decides** things about it — the
-counterpart loom was missing. It answers typed questions as calibrated probabilities
+counterpart Noewright was missing. It answers typed questions as calibrated probabilities
 that code branches on, with every question evaluated independently in one round trip:
 
 - **Noul** — a yes/no proposition, as a probability in 0..1
@@ -539,7 +545,7 @@ noewright seed seed.yaml
 noewright test plan.yaml
 ```
 
-Set the DSN via `LOOM_DSN` (preferred) or `--dsn-file <path>`; `--dsn <string>`
+Set the DSN via `NOEWRIGHT_DSN` (preferred; the pre-rename `LOOM_DSN` is still read as a fallback) or `--dsn-file <path>`; `--dsn <string>`
 also works but exposes credentials in `ps`, so prefer the others.
 
 **Seed file format:**
@@ -580,7 +586,7 @@ make example
 make test-all
 ```
 
-Requires `DND_DSN` / `LOOM_DSN` set, or the default `postgres://loom:loom@localhost:5432/loom?sslmode=disable`.
+Requires `DND_DSN` set, or the default `postgres://loom:loom@localhost:5432/loom?sslmode=disable`.
 
 ---
 
@@ -591,7 +597,7 @@ The implementation lives under `internal/engine` (unimportable by other modules)
 its layout can change without breaking you.
 
 ```sh
-loom/
+noewright/
 ├── aliases.go          # GENERATED public API — type aliases + re-exports of internal/engine
 ├── doc.go              # package doc + go:generate directive for the facade
 ├── llms.txt            # AI-oriented guide (point your AI assistant here)
@@ -604,8 +610,8 @@ loom/
 │   │   ├── engine.go, flow.go, poller.go, hook.go, cache.go, template.go, …
 │   │   └── query.go     #   persistence wrappers (e.g. NotFoundError translation)
 │   ├── tools/facadegen/ # generator that emits aliases.go from internal/engine
-│   ├── enginetest/      # engine integration tests (skip without LOOM_DSN)
-│   └── clitest/         # CLI integration tests (skip without LOOM_DSN)
+│   ├── enginetest/      # engine integration tests (skip without NOEWRIGHT_DSN)
+│   └── clitest/         # CLI integration tests (skip without NOEWRIGHT_DSN)
 ├── schema/             # idempotent DDL loader + ordered migrations (Postgres + SQLite)
 ├── generator/
 │   ├── openai/         # OpenAI chat completions (sync + streaming)
@@ -639,18 +645,24 @@ after changing the public surface (CI enforces the facade is in sync).
 
 ## Releasing
 
-loom is two Go modules: the root and `generator/anthropic` (kept separate so the
-Anthropic SDK's dependencies stay out of loom). Both are released from one
+Noewright is two Go modules: the root and `generator/anthropic` (kept separate so the
+Anthropic SDK's dependencies stay out of Noewright). Both are released from one
 commit on `main`:
 
 ```bash
-make release VERSION=v0.0.3   # checks, bumps generator/anthropic's loom require, tags
+make release VERSION=v0.0.3   # checks, bumps generator/anthropic's noewright require, tags
 git push origin main v0.0.3 generator/anthropic/v0.0.3   # the command it prints
 ```
 
 `generator/anthropic` is only retagged when it changed since its last release;
 otherwise just `vX.Y.Z` is created. The script refuses a dirty tree, another
 branch (`RELEASE_BRANCH` overrides) or an existing tag, and pushes nothing.
+
+## Author
+
+Anusiem John-Franklin ([@Rhaqim](https://github.com/Rhaqim)).
+
+Formerly known as **loom** (`github.com/rhaqim/loom`).
 
 ## License
 

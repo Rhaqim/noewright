@@ -1,12 +1,12 @@
-# loom
+# Noewright
 
-> loom is a Go library for orchestrating multi-agent AI applications. It handles the
+> Noewright is a Go library for orchestrating multi-agent AI applications. It handles the
 > infrastructure — Postgres/SQLite persistence, versioned agents & prompts, session
 > branching/replay, a hook pipeline, cost tracking & budgets, LLM-as-judge scoring, and
 > multi-agent "turns" — so an application focuses on its product, not the plumbing.
 > Modality-agnostic: text, image, video, audio, 3D assets, and structured JSON output flow through one pipeline.
 
-This file is an AI-oriented guide (an "llms.txt"): read it before writing code that uses loom.
+This file is an AI-oriented guide (an "llms.txt"): read it before writing code that uses Noewright.
 It is accurate to the current public API. Everything shown is importable from the single
 package `github.com/rhaqim/noewright` (the "facade"). Do NOT import anything under
 `github.com/rhaqim/noewright/internal/...` — it is not importable from other modules by design.
@@ -35,7 +35,7 @@ package `github.com/rhaqim/noewright` (the "facade"). Do NOT import anything und
   follower agents concurrently, injecting the lead's output into the followers.
 - **Hooks**: pre/post interceptors for validation, retries, content filtering.
 
-Golden rules for AI writing loom code:
+Golden rules for AI writing Noewright code:
 1. Import only `github.com/rhaqim/noewright` (+ `.../schema` and `.../generator/<x>` subpackages).
    Never `.../internal/...`.
 2. Apply the schema BEFORE using the engine (see Setup). Re-running it is safe and runs
@@ -193,7 +193,7 @@ For a session several people share (a multiplayer game):
 Built-in adapters (each `New...` takes an API key + model unless noted):
 - `generator/openai`    → `openai.NewChatGenerator(key, model)`      — text, streaming
 - `generator/anthropic` → `anthropic.NewChatGenerator(key, model)`   — text, streaming. Its own Go module
-  (keeps the SDK's dependencies out of loom): `go get github.com/rhaqim/noewright/generator/anthropic`.
+  (keeps the SDK's dependencies out of Noewright): `go get github.com/rhaqim/noewright/generator/anthropic`.
   `Params.Extra["effort"]` (`low`…`max`) → `output_config.effort`; `.WithNativeStructuredOutputs()`
   sends a ResponseFormat schema as native structured outputs (schema needs `additionalProperties: false`
   on every object). Default `max_tokens` 16000. A safety refusal returns `*noewright.GenerationError{Kind:
@@ -284,7 +284,7 @@ Enable polling via `Config.AsyncPoller` (Interval, Workers, MaxAttempts) **and**
   stale. It wraps the cause: `noewright.ErrSessionConflict` (another writer won the CAS) or
   `noewright.ErrNotFound` (the session was discarded mid-step). Recover the authoritative state with
   `e.Sessions().StateAt(ctx, sess.ID, step.Index)` — checkpoints are written inside the step
-  transaction, so they cannot be missing. If you use loom as a system of record, you MUST handle
+  transaction, so they cannot be missing. If you use Noewright as a system of record, you MUST handle
   this rather than treating a non-nil error as "the step failed".
   In `RunTurn` this error does NOT abort the turn: the step lands in `Turn.Steps` as normal and
   the error is recorded in `Turn.Errors` under `"lead"` or the follower's slug — so a turn can
@@ -416,11 +416,11 @@ the engine records with; `CostEstimate.PricingConfigured` is false when the figu
 Check a key before play with `e.VerifyGenerator(ctx, "slug", map[string]any{"api_key": k, "model":
 m})`: it asks the provider's models endpoint (no tokens), returns `noewright.ModelInfo`, and wraps
 `noewright.ErrKeyRejected` on 401/403 (`ErrVerifyNotSupported` for generators without `noewright.Verifier`;
-the openai and anthropic adapters implement it). loom ships no price list: prices go stale between
+the openai and anthropic adapters implement it). Noewright ships no price list: prices go stale between
 releases, so keep yours in `Config.Pricing`.
 
 A `Limit.USD` is evaluated against the same recorded USD described above, so **a USD cap is not
-meaningful without configured pricing** — loom still enforces it (failing open on a spend control
+meaningful without configured pricing** — Noewright still enforces it (failing open on a spend control
 would be worse) and logs an error once explaining that the cap does not reflect real spend.
 `Limit.Tokens` and `Limit.Steps` are exact regardless.
 
@@ -432,7 +432,7 @@ noewright.New(noewright.Config{ /* ... */ Cache: noewright.NewInProcessCache(), 
 ```
 `Cache` is an interface — back it with Redis/etc. `CacheTTL` 0 uses the 24h default. Nil Cache
 disables caching (every RunStep hits the DB). If the `Cache` is shared with the application's
-own keys, set `Config.CacheKeyPrefix` (default `"loom"`) to namespace loom's entries and avoid
+own keys, set `Config.CacheKeyPrefix` (default `"loom"`) to namespace Noewright's entries and avoid
 collisions — e.g. `CacheKeyPrefix: "myapp:loom"`.
 
 The cache covers BOTH shapes of read:
@@ -459,7 +459,7 @@ before you drop a schema, close the `*sql.DB`, or exit:
 defer func() {
     ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
     defer cancel()
-    if err := e.Close(ctx); err != nil { log.Printf("loom: unclean shutdown: %v", err) }
+    if err := e.Close(ctx); err != nil { log.Printf("noewright: unclean shutdown: %v", err) }
 }()
 ```
 
@@ -631,7 +631,7 @@ for `MaxIdle`, and has no live branches; an empty `Tags` matches everything. Cou
 so `Sweep` is what an external scheduler or an admin endpoint calls. It honours
 `Config.BranchGC.DryRun`, and `SweepReport.DryRun` tells you which mode produced the counts.
 
-Storage still grows with play — loom does not delete data you pinned. Sizing follows from
+Storage still grows with play — Noewright does not delete data you pinned. Sizing follows from
 turns × (one session row + its steps, actions, results and one checkpoint per step); if that
 is too much, export finished playthroughs with `Ancestry` + `Steps` and `ForcePurge` the chain.
 
@@ -745,11 +745,11 @@ flow is valid iff it has no `unresolved` edge and no `Cyclic` entry, which alway
 
 `schema.NewLoader(dialect).Apply(ctx, db)` creates tables on a fresh DB and runs ordered
 migrations (recorded in a ledger) on an existing one. ALWAYS call it at startup; it is safe to
-re-run. If you upgrade loom and see an error like
+re-run. If you upgrade Noewright and see an error like
 `column "..." of relation "loom_agents" does not exist`, your DB predates a migration — just
 run `Apply` again (or `noewright migrate`) to bring it up to date.
 
-CONTRIBUTOR NOTE (only if you modify loom's own `schema/loader.go`): a new baseline column MUST
+CONTRIBUTOR NOTE (only if you modify Noewright's own `schema/loader.go`): a new baseline column MUST
 be paired with an `addColumnIfMissing` migration in `schema/migrations.go`, or existing
 databases break. `CREATE TABLE IF NOT EXISTS` never alters an existing table.
 
@@ -760,12 +760,12 @@ noewright migrate                 # apply schema/migrations
 noewright seed seed.yaml          # seed prompts/agents from YAML
 noewright test plan.yaml          # run a YAML test plan (see harness package)
 ```
-Set the DSN via `LOOM_DSN` env (preferred), `--dsn-file <path>`, or `--dsn <string>`
+Set the DSN via `NOEWRIGHT_DSN` env (preferred; `LOOM_DSN` is still read as a fallback), `--dsn-file <path>`, or `--dsn <string>`
 (the flag exposes credentials in `ps` — prefer the others).
 
 ## Common tasks (recipes)
 
-- "Add a provider loom doesn't ship" → implement `noewright.Generator` (see Custom generators), then
+- "Add a provider Noewright doesn't ship" → implement `noewright.Generator` (see Custom generators), then
   `e.RegisterGenerator("slug", gen)` and set `Agent.GeneratorSlug = "slug"`.
 - "Per-user API keys / model routing" → pass `StepRequest.Overrides{"api_key":..., "model":...}`
   and read them in a custom generator; built-in openai/anthropic honor `Overrides["base_url"]`

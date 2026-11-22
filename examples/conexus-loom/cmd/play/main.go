@@ -1,4 +1,4 @@
-// Command play is the standalone Conexus-on-loom runner. It loads .env, opens a
+// Command play is the standalone Conexus-on-noewright runner. It loads .env, opens a
 // persistent SQLite DB (seeding prompts/agents and recording every playthrough),
 // migrates block.txt into a world, and plays the story interactively.
 //
@@ -82,7 +82,7 @@ func main() {
 	}
 
 	cx := engine.New(engine.Config{
-		Loom:            le,
+		Noewright:       le,
 		Memory:          adapters.NewKeywordMemory(),
 		Media:           adapters.LogMultimedia{Log: log},
 		Plugins:         adapters.NewPluginRegistry(),
@@ -170,7 +170,7 @@ func play(ctx context.Context, cx *engine.Conexus, storyID uuid.UUID, tx *Transc
 		if tr.Status != "ONGOING" {
 			fmt.Printf("\n  THE END — %s\n", tr.Status)
 			tx.End(tr.Status, tr.Step, runTotalUSD) // transcript
-			fmt.Printf("  💸 final spend: ~$%.4f over %d steps (loom recorded ~$%.4f)\n", runTotalUSD, tr.Step, cx.SessionUSD(ctx, storyID))
+			fmt.Printf("  💸 final spend: ~$%.4f over %d steps (noewright recorded ~$%.4f)\n", runTotalUSD, tr.Step, cx.SessionUSD(ctx, storyID))
 			if tx != nil {
 				fmt.Printf("  📝 transcript saved → %s\n", tx.Path())
 			}

@@ -23,10 +23,10 @@ func (b *budgetService) Create(ctx context.Context, budget *Budget) error {
 	case TargetPlatformID:
 	case TargetSessionID:
 		if _, err := uuid.Parse(budget.Target.Key); err != nil {
-			return fmt.Errorf("loom: a %q budget needs a session ID as its key: %w", TargetSessionID, err)
+			return fmt.Errorf("noewright: a %q budget needs a session ID as its key: %w", TargetSessionID, err)
 		}
 	default:
-		return fmt.Errorf("loom: budget target kind %q is not supported (use %q or %q)", budget.Target.Kind, TargetPlatformID, TargetSessionID)
+		return fmt.Errorf("noewright: budget target kind %q is not supported (use %q or %q)", budget.Target.Kind, TargetPlatformID, TargetSessionID)
 	}
 	if budget.ID == uuid.Nil {
 		budget.ID = uuid.New()

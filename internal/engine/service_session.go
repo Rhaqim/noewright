@@ -66,7 +66,7 @@ func (s *sessionService) StateAt(ctx context.Context, id uuid.UUID, stepIndex in
 
 func (s *sessionService) AddParticipant(ctx context.Context, sess *Session, p Participant) error {
 	if p.ID == "" {
-		return fmt.Errorf("loom: participant needs an ID")
+		return fmt.Errorf("noewright: participant needs an ID")
 	}
 	if p.JoinedAt.IsZero() {
 		p.JoinedAt = time.Now()
@@ -120,7 +120,7 @@ func (s *sessionService) Update(ctx context.Context, sess *Session) error {
 func (s *sessionService) Fork(ctx context.Context, parentID uuid.UUID, stepIndex int) (*Session, error) {
 	parent, err := querySession(ctx, s.e.db, s.e.prefix, parentID)
 	if err != nil {
-		return nil, fmt.Errorf("loom: fork: %w", err)
+		return nil, fmt.Errorf("noewright: fork: %w", err)
 	}
 	branch := &Session{
 		ID:              uuid.New(),
@@ -138,7 +138,7 @@ func (s *sessionService) Fork(ctx context.Context, parentID uuid.UUID, stepIndex
 	// no checkpoint exists that early (e.g. a pre-checkpoint session), fall back to
 	// the parent's current state.
 	if st, found, err := querySnapshotAt(ctx, s.e.db, s.e.prefix, parentID, stepIndex); err != nil {
-		return nil, fmt.Errorf("loom: fork: load checkpoint: %w", err)
+		return nil, fmt.Errorf("noewright: fork: load checkpoint: %w", err)
 	} else if found {
 		branch.State = st
 	}

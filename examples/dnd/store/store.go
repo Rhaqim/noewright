@@ -1,5 +1,5 @@
 // Package store handles all persistence for the DND application layer.
-// It operates on dnd_* tables and is entirely separate from loom's own persistence.
+// It operates on dnd_* tables and is entirely separate from noewright's own persistence.
 package store
 
 import (

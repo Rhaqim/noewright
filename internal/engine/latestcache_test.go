@@ -224,7 +224,7 @@ func TestLatestCache_DisabledByNegativeTTL(t *testing.T) {
 	}
 }
 
-// CacheKeyPrefix namespaces loom's keys so a client-provided shared cache
+// CacheKeyPrefix namespaces noewright's keys so a client-provided shared cache
 // cannot cross-serve: two engines with different prefixes over the SAME cache
 // must not see each other's entries, and neither may collide with a key the
 // application itself wrote.
@@ -278,13 +278,13 @@ func TestCacheKeyPrefix_IsolatesSharedCache(t *testing.T) {
 	}
 
 	// The prefix really is in the stored key: a value the application wrote
-	// under its own namespace is untouched by loom, and loom's key is findable
+	// under its own namespace is untouched by noewright, and noewright's key is findable
 	// under the configured prefix.
 	appKey := "appA:loom:agent-latest:loom_::a"
 	if _, ok := shared.Get(ctx, appKey); !ok {
-		t.Fatalf("expected loom to have written key %q under the configured prefix", appKey)
+		t.Fatalf("expected noewright to have written key %q under the configured prefix", appKey)
 	}
-	// A default-prefixed engine writes under "loom:", provably a different key.
+	// A default-prefixed engine writes under "noewright:", provably a different key.
 	if _, ok := shared.Get(ctx, "loom:agent-latest:loom_::a"); ok {
 		t.Fatal("found a default-prefixed key; the CacheKeyPrefix was not applied")
 	}

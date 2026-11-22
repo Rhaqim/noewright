@@ -20,7 +20,7 @@ type Topic struct {
 	Description string
 	Setting     string // "high-fantasy", "dark-fantasy", "steampunk", "horror"
 	Edition     string // "5e", "3.5e", "pathfinder", "osr"
-	DMAgentSlug string // loom agent slug for this topic's DM
+	DMAgentSlug string // noewright agent slug for this topic's DM
 	CreatedAt   time.Time
 }
 
@@ -142,7 +142,7 @@ func (c *Character) Sheet() string {
 }
 
 // VarsMap converts the character's current state into a map suitable for
-// injecting into a loom session's State.Vars so the DM template can use them.
+// injecting into a noewright session's State.Vars so the DM template can use them.
 func (c *Character) VarsMap() map[string]any {
 	return map[string]any{
 		"character_name":       c.Name,

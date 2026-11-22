@@ -1,6 +1,6 @@
 package engine
 
-// clientreport_test.go — regressions for the issues raised in loom-issues.md.
+// clientreport_test.go — regressions for the issues raised in noewright-issues.md.
 // Each test pins the FIXED contract, so a revert fails here rather than in a
 // consumer. Named by the report's ids (B5..B9) for traceability.
 
@@ -368,7 +368,7 @@ func TestG4_CacheIsOwnerScoped(t *testing.T) {
 // --- B1: placeholders must be usable under a positional $N binder ---
 
 // TestB1_PlaceholdersAppearInAscendingOrder guards the class of bug the client
-// hit. loom's own drivers (modernc.org/sqlite, lib/pq) bind $N by NUMBER, so
+// hit. noewright's own drivers (modernc.org/sqlite, lib/pq) bind $N by NUMBER, so
 // out-of-order placeholders are correct here — but callers supply their own
 // *sql.DB, and mattn/go-sqlite3 binds $N by ORDER OF APPEARANCE. Any statement
 // whose placeholders appear out of numeric order silently binds the wrong

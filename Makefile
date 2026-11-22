@@ -16,7 +16,7 @@ up: ## Start PostgreSQL 16 in Docker
 down: ## Stop and remove containers
 	docker compose down
 
-migrate: ## Apply Loom schema to the database
+migrate: ## Apply Noewright schema to the database
 	go run ./cmd/noewright migrate
 
 seed: ## Seed example agents and prompts
@@ -72,7 +72,7 @@ check: check-facade ## Run non-DB checks: facade sync, vet, build, race tests (n
 	NOEWRIGHT_DSN= LOOM_DSN= go test -race -count=1 ./...
 	cd generator/anthropic && go vet ./... && go build ./... && go test -race -count=1 ./...
 
-release: ## Tag loom (and generator/anthropic if it changed) as VERSION=vX.Y.Z on main; prints the push command
+release: ## Tag noewright (and generator/anthropic if it changed) as VERSION=vX.Y.Z on main; prints the push command
 	@./scripts/release.sh "$(VERSION)"
 
 build: ## Build the noewright binary

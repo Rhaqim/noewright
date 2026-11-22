@@ -44,7 +44,7 @@ func sqlQueryPromptLatest(ctx context.Context, db *sql.DB, prefix, owner, slug s
 }
 
 // sqlQueryPromptByID is intentionally not owner-filtered: the row UUID is
-// globally unique and this resolves loom's own FK references.
+// globally unique and this resolves noewright's own FK references.
 func sqlQueryPromptByID(ctx context.Context, db *sql.DB, prefix string, id uuid.UUID) (*Prompt, error) {
 	row := db.QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT %s

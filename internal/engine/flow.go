@@ -21,7 +21,7 @@ import (
 // prose, then a "logician", "sensory director", "titler", etc. analyse that
 // prose in parallel (and, where wired, feed each other) — all as one turn.
 //
-// Every agent in a flow is an ordinary versioned loom Agent, so the only thing
+// Every agent in a flow is an ordinary versioned noewright Agent, so the only thing
 // that changes between products (or between text, image, video, spatial, and AR
 // modalities) is the set of agents/prompts referenced by the Flow plus the
 // hooks registered on the engine. The engine machinery — sessions, retries,
@@ -233,7 +233,7 @@ func (e *Engine) RunTurn(ctx context.Context, session *Session, req TurnRequest)
 	}
 	if req.LeadResult != nil {
 		if req.LeadAuthor == "" {
-			return nil, fmt.Errorf("loom: TurnRequest.LeadResult needs a LeadAuthor")
+			return nil, fmt.Errorf("noewright: TurnRequest.LeadResult needs a LeadAuthor")
 		}
 		onChunk = nil
 	}
@@ -266,7 +266,7 @@ func (e *Engine) RunTurn(ctx context.Context, session *Session, req TurnRequest)
 		leadNotPersisted, err = err, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("loom: turn %q lead %q: %w", req.Flow.Slug, req.Flow.Lead.AgentSlug, err)
+		return nil, fmt.Errorf("noewright: turn %q lead %q: %w", req.Flow.Slug, req.Flow.Lead.AgentSlug, err)
 	}
 	inputs[leadKey] = ResultText(leadStep.Result)
 	bus.Publish(leadSlug, "lead.done", ResultText(leadStep.Result))
@@ -328,7 +328,7 @@ func (e *Engine) RunTurn(ctx context.Context, session *Session, req TurnRequest)
 		// OnStep, surface it there too.
 		defer func() {
 			if r := recover(); r != nil {
-				perr := fmt.Errorf("loom: follower %q panicked: %v", f.AgentSlug, r)
+				perr := fmt.Errorf("noewright: follower %q panicked: %v", f.AgentSlug, r)
 				mu.Lock()
 				if _, ok := turn.Followers[f.AgentSlug]; !ok {
 					turn.Errors[f.AgentSlug] = perr
@@ -361,7 +361,7 @@ func (e *Engine) RunTurn(ctx context.Context, session *Session, req TurnRequest)
 				// A gate that cannot decide must not silently pick one way.
 				// Report it and skip, so the failure is visible on the turn
 				// while the rest of the fan-out still completes.
-				gerr = fmt.Errorf("loom: follower %q gate: %w", f.AgentSlug, gerr)
+				gerr = fmt.Errorf("noewright: follower %q gate: %w", f.AgentSlug, gerr)
 				mu.Lock()
 				turn.Errors[f.AgentSlug] = gerr
 				turn.Skipped = append(turn.Skipped, f.AgentSlug)

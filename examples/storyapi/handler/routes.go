@@ -15,7 +15,7 @@ func Routes(h *Handler) http.Handler {
 	authLimit := newRateLimiter(10, time.Minute)
 
 	// Per-IP throttle on the play endpoints: each turn triggers a paid LLM call,
-	// so cap the rate to blunt cost-amplification abuse. (loom budgets are the
+	// so cap the rate to blunt cost-amplification abuse. (noewright budgets are the
 	// per-user hard cap; this is a coarse first line of defence.)
 	playLimit := newRateLimiter(30, time.Minute)
 

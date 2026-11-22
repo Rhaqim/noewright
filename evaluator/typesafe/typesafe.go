@@ -1,4 +1,4 @@
-// Package typesafe implements loom's EXPERIMENTAL evaluator.Evaluator against
+// Package typesafe implements noewright's EXPERIMENTAL evaluator.Evaluator against
 // TypeSafe's System One API — the Jev model family.
 //
 // One POST carries the state and every question; the answers come back keyed by

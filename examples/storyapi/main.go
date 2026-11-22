@@ -1,5 +1,5 @@
 // Command story-api is a REST backend for an AI-powered story generator
-// built on the loom procgen engine.
+// built on the noewright procgen engine.
 //
 // Environment variables:
 //
@@ -52,7 +52,7 @@ func main() {
 
 	log.Info("applying schemas")
 	if err := game.ApplyLoomSchema(ctx, conn); err != nil {
-		log.Error("loom schema", "err", err)
+		log.Error("noewright schema", "err", err)
 		os.Exit(1)
 	}
 	if err := db.ApplySchema(ctx, conn); err != nil {

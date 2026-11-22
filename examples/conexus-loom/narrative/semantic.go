@@ -6,12 +6,12 @@ import (
 	"github.com/rhaqim/noewright"
 )
 
-// semantic.go is the Quality Engine's semantic tier, built on loom's
+// semantic.go is the Quality Engine's semantic tier, built on noewright's
 // EXPERIMENTAL evaluation subsystem. It is the same job as quality.go —
-// reject weak Author prose and ask loom to retry — but asked as questions
+// reject weak Author prose and ask noewright to retry — but asked as questions
 // instead of matched as strings.
 //
-// The split is deliberate, and it is the whole point of the layering: loom owns
+// The split is deliberate, and it is the whole point of the layering: noewright owns
 // the MECHANISM (an Evaluator interface, a batch call, EvalGate turning answers
 // into retries) and knows nothing about fiction. This file owns the QUESTIONS —
 // what "slop", "stale" and "good prose" mean for this product. Questions are
@@ -57,13 +57,13 @@ var proseLevels = []string{
 // below "competent but flat").
 //
 // The hook is inert on an engine with no Evaluator configured, so registering it
-// unconditionally is safe — see loom's EvalGate.
+// unconditionally is safe — see noewright's EvalGate.
 func SemanticQualityGate(e *noewright.Engine, minQuality float64) noewright.PostHook {
 	return SemanticQualityGateWithRetryLimit(e, minQuality, -1)
 }
 
 // SemanticQualityGateWithRetryLimit is SemanticQualityGate with a per-gate
-// retry cap. A negative limit preserves normal Loom retry behaviour. Once the
+// retry cap. A negative limit preserves normal Noewright retry behaviour. Once the
 // cap is reached, the latest draft is accepted: this protects an interactive
 // story from a persistently over-sensitive evaluator while preserving the
 // evaluator response in verbose logs for threshold tuning.

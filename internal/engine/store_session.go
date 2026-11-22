@@ -245,7 +245,7 @@ func prefixedSessionColumns(alias string) string {
 }
 
 // Placeholders below are numbered in ascending order of APPEARANCE, not by
-// logical importance, and args are appended to match. loom's own drivers
+// logical importance, and args are appended to match. noewright's own drivers
 // (modernc.org/sqlite, lib/pq) bind $N by number, so this is not required for
 // correctness here — but mattn/go-sqlite3 binds $N by order of appearance, and
 // callers supply their own *sql.DB. Keeping appearance order == numeric order

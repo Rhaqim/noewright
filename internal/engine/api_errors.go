@@ -9,7 +9,7 @@ import (
 // skipError is returned by a pre-hook to cancel a step without treating it as failure.
 type skipError struct{ reason string }
 
-func (e skipError) Error() string { return "loom: skip: " + e.reason }
+func (e skipError) Error() string { return "noewright: skip: " + e.reason }
 
 // ErrSkip cancels the current step when returned from a pre-hook.
 var ErrSkip = skipError{reason: "step cancelled by pre-hook"}
@@ -43,7 +43,7 @@ type RetryError struct {
 }
 
 func (e *RetryError) Error() string {
-	return fmt.Sprintf("loom: retry: %s", e.Annotation.Reason)
+	return fmt.Sprintf("noewright: retry: %s", e.Annotation.Reason)
 }
 
 // ErrRetryWith constructs a RetryError with the given annotation.
@@ -102,30 +102,30 @@ func (e *BudgetExceededError) Error() string {
 	default:
 		used = fmt.Sprintf("used $%.4f of $%.4f", e.UsedUSD, e.LimitUSD)
 	}
-	return fmt.Sprintf("loom: budget exceeded: %s (%s window): %s", e.BudgetName, e.Window, used)
+	return fmt.Sprintf("noewright: budget exceeded: %s (%s window): %s", e.BudgetName, e.Window, used)
 }
 
 // ErrKeyRejected is wrapped by Verifier.Verify when the provider rejects the
 // API key (HTTP 401/403), so a UI can say "key not accepted" before play.
-var ErrKeyRejected = errors.New("loom: provider rejected the API key")
+var ErrKeyRejected = errors.New("noewright: provider rejected the API key")
 
 // ErrVerifyNotSupported is returned by Engine.VerifyGenerator for a generator
 // that does not implement Verifier.
-var ErrVerifyNotSupported = errors.New("loom: generator does not support key verification")
+var ErrVerifyNotSupported = errors.New("noewright: generator does not support key verification")
 
 // ErrNotParticipant is returned when an action names a ParticipantID that is
 // not one of the session's participants, or RemoveParticipant is given an
 // unknown id.
-var ErrNotParticipant = errors.New("loom: not a participant of this session")
+var ErrNotParticipant = errors.New("noewright: not a participant of this session")
 
 // ErrParticipantExists is returned by AddParticipant for an ID already present.
-var ErrParticipantExists = errors.New("loom: participant already in this session")
+var ErrParticipantExists = errors.New("noewright: participant already in this session")
 
 // ErrNotFound is returned when a requested entity does not exist. Errors from
 // the registries (Agents/Prompts/Sessions/Budgets/ResponseFormats) unwrap to it,
 // so errors.Is(err, ErrNotFound) is the portable "does not exist" check; use
 // errors.As with *NotFoundError to learn which entity and key were missing.
-var ErrNotFound = errors.New("loom: not found")
+var ErrNotFound = errors.New("noewright: not found")
 
 // NotFoundError identifies which entity was missing and by what key. It unwraps
 // to ErrNotFound, so both errors.Is(err, ErrNotFound) and
@@ -137,9 +137,9 @@ type NotFoundError struct {
 
 func (e *NotFoundError) Error() string {
 	if e.Key == "" {
-		return fmt.Sprintf("loom: %s not found", e.Kind)
+		return fmt.Sprintf("noewright: %s not found", e.Kind)
 	}
-	return fmt.Sprintf("loom: %s %q not found", e.Kind, e.Key)
+	return fmt.Sprintf("noewright: %s %q not found", e.Kind, e.Key)
 }
 
 func (e *NotFoundError) Unwrap() error { return ErrNotFound }
@@ -154,30 +154,30 @@ func wrapNotFound(err error, kind, key string) error {
 }
 
 // ErrDuplicateSlug is returned when an agent or prompt slug+version already exists.
-var ErrDuplicateSlug = errors.New("loom: duplicate slug+version")
+var ErrDuplicateSlug = errors.New("noewright: duplicate slug+version")
 
 // ErrSessionConflict is returned by Session update when the row's version no
 // longer matches the in-memory copy — another writer updated it first, so this
 // write would clobber theirs (optimistic-concurrency conflict).
-var ErrSessionConflict = errors.New("loom: session update conflict")
+var ErrSessionConflict = errors.New("noewright: session update conflict")
 
 // ErrMissingVariables is returned by RunStep when the user template's prompt
 // declares required input variables (Prompt.Variables) and one or more were not
 // supplied in StepRequest.Inputs. The wrapped message lists the missing names.
 // A prompt that declares no variables never triggers this.
-var ErrMissingVariables = errors.New("loom: missing required template variables")
+var ErrMissingVariables = errors.New("noewright: missing required template variables")
 
 // ErrFlowInvalid is returned by Flows().Validate (and Create's self-contained
 // checks) when a flow's variable wiring is inconsistent — a duplicate producer,
 // a consumed variable with no producer, or (until layered execution lands) a
 // cross-follower dependency. Wrapped errors describe each problem; several may
 // be joined so an author sees all of them at once.
-var ErrFlowInvalid = errors.New("loom: invalid flow")
+var ErrFlowInvalid = errors.New("noewright: invalid flow")
 
 // ErrSessionPinned is returned by Purge when the target session is pinned.
 // Pinning marks data as protected, so an irreversible delete requires the
 // explicit ForcePurge instead.
-var ErrSessionPinned = errors.New("loom: session is pinned")
+var ErrSessionPinned = errors.New("noewright: session is pinned")
 
 // ErrSessionNotPersisted is returned by RunStep (and wrapped into Turn.Errors
 // by RunTurn) when a step ran and committed — its result and checkpoint are
@@ -192,24 +192,24 @@ var ErrSessionPinned = errors.New("loom: session is pinned")
 // the session and replay.
 //
 // This is deliberately a returned error rather than a diagnostics flag: a
-// caller using loom as a system of record must not proceed on state the
+// caller using noewright as a system of record must not proceed on state the
 // database does not have.
-var ErrSessionNotPersisted = errors.New("loom: session row not persisted after step")
+var ErrSessionNotPersisted = errors.New("noewright: session row not persisted after step")
 
 // ErrInvalidConfig is returned by New when the Config is missing a required
 // field or is otherwise unusable. Wrapped errors carry the specific reason.
-var ErrInvalidConfig = errors.New("loom: invalid config")
+var ErrInvalidConfig = errors.New("noewright: invalid config")
 
 // ErrGeneratorNotRegistered is returned when a step references a generator slug
 // that was never registered with the engine. Wrapped errors name the slug.
-var ErrGeneratorNotRegistered = errors.New("loom: generator not registered")
+var ErrGeneratorNotRegistered = errors.New("noewright: generator not registered")
 
 // ErrEvaluatorNotConfigured is returned by Engine.Evaluate when the application
 // has not opted into the EXPERIMENTAL evaluation subsystem by setting
 // Config.Evaluator. It is deliberately distinct from an evaluation failure so a
 // caller can tell "the feature is off" from "the question could not be
 // answered" and fall back to its pre-evaluator behaviour in the first case.
-var ErrEvaluatorNotConfigured = errors.New("loom: evaluator not configured")
+var ErrEvaluatorNotConfigured = errors.New("noewright: evaluator not configured")
 
 // GenerationErrorKind classifies why a generator failed to produce a result, so
 // applications can react differently (e.g. retry transport failures but surface
@@ -237,7 +237,7 @@ type GenerationError struct {
 }
 
 func (e *GenerationError) Error() string {
-	msg := "loom: generation failed"
+	msg := "noewright: generation failed"
 	if e.Provider != "" {
 		msg += fmt.Sprintf(" [%s]", e.Provider)
 	}

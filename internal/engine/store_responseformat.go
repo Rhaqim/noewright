@@ -40,7 +40,7 @@ func sqlQueryResponseFormatLatest(ctx context.Context, db *sql.DB, prefix, owner
 }
 
 // sqlQueryResponseFormatByID is intentionally not owner-filtered: the row UUID
-// is globally unique and this resolves loom's own FK references.
+// is globally unique and this resolves noewright's own FK references.
 func sqlQueryResponseFormatByID(ctx context.Context, db *sql.DB, prefix string, id uuid.UUID) (*ResponseFormatRecord, error) {
 	row := db.QueryRowContext(ctx, fmt.Sprintf(`SELECT %s FROM %sresponse_formats WHERE id=$1`, responseFormatColumns, prefix), id)
 	return scanResponseFormat(row)

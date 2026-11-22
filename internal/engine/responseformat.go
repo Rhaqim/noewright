@@ -49,7 +49,7 @@ type ResponseFormatRegistry interface {
 	Latest(ctx context.Context, owner, slug string) (*ResponseFormatRecord, error)
 	// GetByID retrieves a response format by ID.
 	//
-	// This is NOT owner-scoped: it exists to resolve loom's own internal FK
+	// This is NOT owner-scoped: it exists to resolve noewright's own internal FK
 	// references (Agent.ResponseFormatID), and a UUID primary key is globally
 	// unique. An application must therefore not pass an untrusted,
 	// tenant-supplied ID to it without checking the returned record's Owner
@@ -129,7 +129,7 @@ func (s *responseFormatService) List(ctx context.Context, owner, category string
 
 func (s *responseFormatService) Delete(ctx context.Context, owner, slug string, version int) error {
 	if version < 1 {
-		return fmt.Errorf("loom: delete response format %q: an explicit version >= 1 is required", slug)
+		return fmt.Errorf("noewright: delete response format %q: an explicit version >= 1 is required", slug)
 	}
 	// Resolve the row id first so we can also evict the by-id cache that GetByID
 	// and the agent-build path populate (cacheKey "rf-id").

@@ -63,7 +63,7 @@ func userListCmd() *cobra.Command {
 				return err
 			}
 			if len(users) == 0 {
-				fmt.Println("No players yet. Run: loom-dnd user create --username <name>")
+				fmt.Println("No players yet. Run: noewright-dnd user create --username <name>")
 				return nil
 			}
 			fmt.Printf("%-36s  %s\n", "ID", "USERNAME")

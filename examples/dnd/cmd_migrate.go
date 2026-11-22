@@ -12,7 +12,7 @@ import (
 func migrateCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "migrate",
-		Short: "Apply the loom and DND database schemas",
+		Short: "Apply the noewright and DND database schemas",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			conn, err := openDB(cmd)
 			if err != nil {
@@ -21,9 +21,9 @@ func migrateCmd() *cobra.Command {
 			defer conn.Close()
 			ctx := context.Background()
 
-			fmt.Print("Applying loom schema... ")
+			fmt.Print("Applying noewright schema... ")
 			if err := game.ApplyLoomSchema(ctx, conn); err != nil {
-				return fmt.Errorf("loom schema: %w", err)
+				return fmt.Errorf("noewright schema: %w", err)
 			}
 			fmt.Println("done.")
 

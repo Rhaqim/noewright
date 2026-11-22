@@ -1,4 +1,4 @@
-// Package game contains D&D gameplay logic that sits on top of loom.
+// Package game contains D&D gameplay logic that sits on top of noewright.
 package game
 
 import (

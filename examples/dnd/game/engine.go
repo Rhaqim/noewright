@@ -24,8 +24,8 @@ const (
 
 // Engine is the DND game engine — wraps noewright.Engine and adds D&D orchestration.
 type Engine struct {
-	Loom  *noewright.Engine
-	Store *store.Store
+	Noewright *noewright.Engine
+	Store     *store.Store
 }
 
 // New creates a DND Engine from a *sql.DB.
@@ -39,12 +39,12 @@ func New(ctx context.Context, db *sql.DB, st *store.Store) (*Engine, error) {
 	}
 	e, err := noewright.New(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("loom engine: %w", err)
+		return nil, fmt.Errorf("noewright engine: %w", err)
 	}
-	return &Engine{Loom: e, Store: st}, nil
+	return &Engine{Noewright: e, Store: st}, nil
 }
 
-// ApplyLoomSchema applies the loom schema (idempotent).
+// ApplyLoomSchema applies the noewright schema (idempotent).
 func ApplyLoomSchema(ctx context.Context, db *sql.DB) error {
 	return schema.NewLoader(schema.DialectPostgres).Apply(ctx, db)
 }
@@ -75,8 +75,8 @@ func BestGeneratorSlug() string {
 	return "echo"
 }
 
-// SeedDMAgent ensures the loom prompts and agent for a topic exist (idempotent).
-// It creates the system prompt, shared user template, and DM agent in loom,
+// SeedDMAgent ensures the noewright prompts and agent for a topic exist (idempotent).
+// It creates the system prompt, shared user template, and DM agent in noewright,
 // then returns the agent slug.
 func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlug string, err error) {
 	agentSlug = "dm-" + topic.Slug
@@ -90,13 +90,13 @@ func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlu
 		Kind:     noewright.PromptKindSystem,
 		Category: "dnd-dm",
 		Body:     DMSystemPrompt(topic.Name, topic.Setting, topic.Edition),
-		Notes:    "Auto-seeded by loom-dnd for topic: " + topic.Name,
+		Notes:    "Auto-seeded by noewright-dnd for topic: " + topic.Name,
 	}
-	if err := e.Loom.Prompts().Create(ctx, sysPrompt); err != nil && !isDuplicateErr(err) {
+	if err := e.Noewright.Prompts().Create(ctx, sysPrompt); err != nil && !isDuplicateErr(err) {
 		return "", fmt.Errorf("seed system prompt: %w", err)
 	}
 	// Fetch the persisted system prompt to get its UUID.
-	sp, err := e.Loom.Prompts().Get(ctx, "", sysSlug, 1)
+	sp, err := e.Noewright.Prompts().Get(ctx, "", sysSlug, 1)
 	if err != nil {
 		return "", fmt.Errorf("fetch system prompt: %w", err)
 	}
@@ -110,11 +110,11 @@ func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlu
 		Body:     DMUserTemplate(),
 		Notes:    "Shared DM user template — injects character state and player action",
 	}
-	if err := e.Loom.Prompts().Create(ctx, userPrompt); err != nil && !isDuplicateErr(err) {
+	if err := e.Noewright.Prompts().Create(ctx, userPrompt); err != nil && !isDuplicateErr(err) {
 		return "", fmt.Errorf("seed user template: %w", err)
 	}
 	// Fetch the persisted user template to get its UUID.
-	ut, err := e.Loom.Prompts().Get(ctx, "", dmUserPromptSlug, dmUserPromptVer)
+	ut, err := e.Noewright.Prompts().Get(ctx, "", dmUserPromptSlug, dmUserPromptVer)
 	if err != nil {
 		return "", fmt.Errorf("fetch user template: %w", err)
 	}
@@ -129,21 +129,21 @@ func (e *Engine) SeedDMAgent(ctx context.Context, topic *domain.Topic) (agentSlu
 		SystemPromptID: sp.ID,
 		UserTemplateID: ut.ID,
 	}
-	if err := e.Loom.Agents().Create(ctx, agent); err != nil && !isDuplicateErr(err) {
+	if err := e.Noewright.Agents().Create(ctx, agent); err != nil && !isDuplicateErr(err) {
 		return "", fmt.Errorf("seed agent: %w", err)
 	}
 
 	return agentSlug, nil
 }
 
-// StartSession loads or creates the loom Session for a campaign.
+// StartSession loads or creates the noewright Session for a campaign.
 func (e *Engine) StartSession(ctx context.Context, campaign *domain.Campaign, character *domain.Character, platformID string) (*noewright.Session, error) {
 	if campaign.LoomSessionID != "" {
 		sessID, err := uuid.Parse(campaign.LoomSessionID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid session id %q: %w", campaign.LoomSessionID, err)
 		}
-		sess, err := e.Loom.Sessions().Get(ctx, sessID)
+		sess, err := e.Noewright.Sessions().Get(ctx, sessID)
 		if err != nil {
 			return nil, fmt.Errorf("load session: %w", err)
 		}
@@ -160,7 +160,7 @@ func (e *Engine) StartSession(ctx context.Context, campaign *domain.Campaign, ch
 			Vars:     character.VarsMap(),
 		},
 	}
-	if err := e.Loom.Sessions().Create(ctx, sess); err != nil {
+	if err := e.Noewright.Sessions().Create(ctx, sess); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 	if err := e.Store.SetCampaignSession(ctx, campaign.ID, sess.ID.String()); err != nil {
@@ -177,7 +177,7 @@ func (e *Engine) Play(ctx context.Context, sess *noewright.Session, character *d
 	sess.State.Vars = character.VarsMap()
 
 	var streamed string
-	step, err := e.Loom.RunStep(ctx, sess, noewright.StepRequest{
+	step, err := e.Noewright.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug: agentSlug,
 		Action: &noewright.Action{
 			Kind:    noewright.ActionFreeText,

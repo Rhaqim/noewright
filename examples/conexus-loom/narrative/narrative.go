@@ -213,7 +213,7 @@ func extractJSON(s string) string {
 	return s
 }
 
-// QAHook validates the Logician's output and asks loom to retry the agent when it
+// QAHook validates the Logician's output and asks noewright to retry the agent when it
 // is malformed or low-quality. This is the deterministic-QA-as-a-hook pattern:
 // invalid JSON, wrong option count, or duplicate verb buckets all trigger a
 // retry, and the next attempt sees the reason on req.Annotations. Non-logician

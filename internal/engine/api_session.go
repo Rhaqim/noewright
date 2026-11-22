@@ -198,7 +198,7 @@ type BranchNode struct {
 	// loaded on a tree node — BranchTree deliberately reads session rows only,
 	// so len(node.Session.History) is always 0 here and is not a step count. A
 	// rewind or timeline UI needs the number per node, and fetching it with a
-	// Steps() call per node would be N queries over a tree loom already walked.
+	// Steps() call per node would be N queries over a tree noewright already walked.
 	StepCount int
 	Children  []*BranchNode
 }
@@ -230,7 +230,7 @@ type SessionRegistry interface {
 	// Session.History, so a step run on a header-loaded session is sent no
 	// prior turns. That is correct when the caller supplies context itself
 	// (via StepRequest.Inputs, State.Snapshot/Vars, or a retrieval hook), and
-	// wrong if it expects loom to carry the conversation. Use Get, or page
+	// wrong if it expects noewright to carry the conversation. Use Get, or page
 	// history in with Steps, when the transcript is the context.
 	GetHeader(ctx context.Context, id uuid.UUID) (*Session, error)
 	// GetIncludingDeleted retrieves a session by ID even if it has been

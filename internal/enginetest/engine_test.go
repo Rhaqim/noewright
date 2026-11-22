@@ -1,4 +1,4 @@
-// Package enginetest contains integration tests for the Loom engine.
+// Package enginetest contains integration tests for the Noewright engine.
 // Tests are skipped when the NOEWRIGHT_DSN environment variable is not set.
 package enginetest
 
@@ -54,7 +54,7 @@ func openTestDB(t *testing.T) *sql.DB {
 	return db
 }
 
-// newTestEngine creates a Loom engine backed by a real Postgres DB.
+// newTestEngine creates a Noewright engine backed by a real Postgres DB.
 func newTestEngine(t *testing.T) *noewright.Engine {
 	t.Helper()
 	db := openTestDB(t)

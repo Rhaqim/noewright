@@ -44,7 +44,7 @@ type AgentRegistry interface {
 	// GetByID retrieves an agent by row ID — the way a FallbackAgentID is
 	// resolved back to the agent it points at without listing every agent.
 	//
-	// This is NOT owner-scoped: it exists to resolve loom's own internal FK
+	// This is NOT owner-scoped: it exists to resolve noewright's own internal FK
 	// references, and a UUID primary key is globally unique. An application must
 	// therefore not pass an untrusted, tenant-supplied ID to it without checking
 	// the returned record's Owner against the caller's scope itself.

@@ -17,7 +17,7 @@ package engine
 // Evaluator on its own; the application wires it into a hook (see EvalGate), a
 // flow gate (FlowAgent.When), or a judge (evaluator.NewRubricJudge and friends).
 //
-// EXPERIMENTAL: this surface is not covered by loom's compatibility promise and
+// EXPERIMENTAL: this surface is not covered by noewright's compatibility promise and
 // may change shape in a future minor release.
 
 import (
@@ -150,7 +150,7 @@ func (e *Engine) Evaluate(ctx context.Context, state any, questions map[string]E
 	}
 	eval, err := ev.Evaluate(ctx, state, questions)
 	if err != nil {
-		return Evaluation{}, fmt.Errorf("loom: evaluate: %w", err)
+		return Evaluation{}, fmt.Errorf("noewright: evaluate: %w", err)
 	}
 	return eval, nil
 }

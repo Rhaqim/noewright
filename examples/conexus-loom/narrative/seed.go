@@ -1,4 +1,4 @@
-// Package narrative wires the Conexus agents onto loom: it seeds versioned
+// Package narrative wires the Conexus agents onto noewright: it seeds versioned
 // prompts from files, builds the per-version agents, defines the turn Flow, and
 // parses/validates the agents' output. The agents and prompts are the only thing
 // that changes between prompt experiments — bump a version and replay.
@@ -18,7 +18,7 @@ import (
 	"github.com/rhaqim/noewright"
 )
 
-// Agent slugs. Each is a loom agent backed by a versioned prompt pair.
+// Agent slugs. Each is a noewright agent backed by a versioned prompt pair.
 const (
 	AgentAuthor   = "author"
 	AgentLogician = "logician"

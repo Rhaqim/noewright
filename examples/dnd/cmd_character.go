@@ -29,11 +29,11 @@ func characterCreateCmd() *cobra.Command {
 		Use:   "create",
 		Short: "Create a new character in a campaign",
 		Example: `  # Roll random ability scores (4d6 drop lowest):
-  loom-dnd character create --campaign <id> --username thorin \
+  noewright-dnd character create --campaign <id> --username thorin \
       --name "Thorin Ironforge" --race Dwarf --class Fighter --roll-stats
 
   # Use standard array (15,14,13,12,10,8):
-  loom-dnd character create --campaign <id> --username thorin \
+  noewright-dnd character create --campaign <id> --username thorin \
       --name "Aria Swiftwind" --race Elf --class Rogue`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if username == "" || campaignID == "" || name == "" || race == "" || class == "" {
@@ -49,7 +49,7 @@ func characterCreateCmd() *cobra.Command {
 
 			user, err := st.GetUserByUsername(ctx, username)
 			if err != nil {
-				return fmt.Errorf("user %q not found (run: loom-dnd user create --username %s)", username, username)
+				return fmt.Errorf("user %q not found (run: noewright-dnd user create --username %s)", username, username)
 			}
 
 			campID, err := uuid.Parse(campaignID)
@@ -112,12 +112,12 @@ func characterCreateCmd() *cobra.Command {
 			fmt.Println()
 			fmt.Println(ch.Sheet())
 			fmt.Println("Character created! Start your adventure:")
-			fmt.Printf("  loom-dnd play --username %s --campaign %s\n", username, campaign.ID)
+			fmt.Printf("  noewright-dnd play --username %s --campaign %s\n", username, campaign.ID)
 			return nil
 		},
 	}
 	cmd.Flags().StringVar(&username, "username", "", "Player username (required)")
-	cmd.Flags().StringVar(&campaignID, "campaign", "", "Campaign ID (required) — see: loom-dnd campaign list")
+	cmd.Flags().StringVar(&campaignID, "campaign", "", "Campaign ID (required) — see: noewright-dnd campaign list")
 	cmd.Flags().StringVar(&name, "name", "", "Character name (required)")
 	cmd.Flags().StringVar(&race, "race", "", "Race: Human | Elf | Dwarf | Halfling | Gnome | Half-Orc | Tiefling | Dragonborn")
 	cmd.Flags().StringVar(&class, "class", "", "Class: Fighter | Wizard | Rogue | Cleric | Bard | Ranger | Paladin | Barbarian | Druid | Monk | Warlock | Sorcerer")

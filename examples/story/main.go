@@ -1,4 +1,4 @@
-// story is an example Loom application that runs a simple interactive
+// story is an example Noewright application that runs a simple interactive
 // narrative pipeline using PostgreSQL for persistence.
 //
 // It demonstrates:
@@ -226,11 +226,11 @@ type stdLogger struct{}
 func (l *stdLogger) Info(msg string, kv ...any) {
 	args := fmtKV(kv)
 	if args != "" {
-		fmt.Printf("[loom] %s  %s\n", msg, args)
+		fmt.Printf("[noewright] %s  %s\n", msg, args)
 	}
 }
 func (l *stdLogger) Error(msg string, kv ...any) {
-	fmt.Printf("[loom:error] %s  %s\n", msg, fmtKV(kv))
+	fmt.Printf("[noewright:error] %s  %s\n", msg, fmtKV(kv))
 }
 func fmtKV(kv []any) string {
 	s := ""

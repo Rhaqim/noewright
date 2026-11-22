@@ -1,4 +1,4 @@
-// Package game contains the story-generation logic that sits on top of loom.
+// Package game contains the story-generation logic that sits on top of noewright.
 package game
 
 import (
@@ -33,8 +33,8 @@ type PlayResult struct {
 
 // Engine wraps noewright.Engine and adds story-API orchestration.
 type Engine struct {
-	Loom  *noewright.Engine
-	Store *store.Store
+	Noewright *noewright.Engine
+	Store     *store.Store
 }
 
 // New creates a story Engine.
@@ -48,12 +48,12 @@ func New(ctx context.Context, db *sql.DB, st *store.Store) (*Engine, error) {
 	}
 	e, err := noewright.New(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("loom engine: %w", err)
+		return nil, fmt.Errorf("noewright engine: %w", err)
 	}
-	return &Engine{Loom: e, Store: st}, nil
+	return &Engine{Noewright: e, Store: st}, nil
 }
 
-// ApplyLoomSchema applies the loom schema (idempotent).
+// ApplyLoomSchema applies the noewright schema (idempotent).
 func ApplyLoomSchema(ctx context.Context, db *sql.DB) error {
 	return schema.NewLoader(schema.DialectPostgres).Apply(ctx, db)
 }
@@ -82,7 +82,7 @@ func availableGenerators() map[string]noewright.Generator {
 	return gens
 }
 
-// SeedStoryAgent ensures the loom prompts and narrator agent for a topic exist.
+// SeedStoryAgent ensures the noewright prompts and narrator agent for a topic exist.
 // It is idempotent — safe to call on every request.
 func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agentSlug string, err error) {
 	agentSlug = "narrator-" + topic.Slug
@@ -97,10 +97,10 @@ func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agent
 		Body:     SystemPrompt(topic.Name, topic.Genre),
 		Notes:    "Auto-seeded for topic: " + topic.Name,
 	}
-	if err := e.Loom.Prompts().Create(ctx, sysPrompt); err != nil && !isDuplicateErr(err) {
+	if err := e.Noewright.Prompts().Create(ctx, sysPrompt); err != nil && !isDuplicateErr(err) {
 		return "", fmt.Errorf("seed system prompt: %w", err)
 	}
-	sp, err := e.Loom.Prompts().Get(ctx, "", sysSlug, 1)
+	sp, err := e.Noewright.Prompts().Get(ctx, "", sysSlug, 1)
 	if err != nil {
 		return "", fmt.Errorf("fetch system prompt: %w", err)
 	}
@@ -114,10 +114,10 @@ func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agent
 		Body:     UserTemplate(),
 		Notes:    "Shared story-api user template — injects history and reader action",
 	}
-	if err := e.Loom.Prompts().Create(ctx, userPrompt); err != nil && !isDuplicateErr(err) {
+	if err := e.Noewright.Prompts().Create(ctx, userPrompt); err != nil && !isDuplicateErr(err) {
 		return "", fmt.Errorf("seed user template: %w", err)
 	}
-	ut, err := e.Loom.Prompts().Get(ctx, "", userPromptSlug, userPromptVer)
+	ut, err := e.Noewright.Prompts().Get(ctx, "", userPromptSlug, userPromptVer)
 	if err != nil {
 		return "", fmt.Errorf("fetch user template: %w", err)
 	}
@@ -132,21 +132,21 @@ func (e *Engine) SeedStoryAgent(ctx context.Context, topic *domain.Topic) (agent
 		SystemPromptID: sp.ID,
 		UserTemplateID: ut.ID,
 	}
-	if err := e.Loom.Agents().Create(ctx, agent); err != nil && !isDuplicateErr(err) {
+	if err := e.Noewright.Agents().Create(ctx, agent); err != nil && !isDuplicateErr(err) {
 		return "", fmt.Errorf("seed agent: %w", err)
 	}
 
 	return agentSlug, nil
 }
 
-// StartSession loads or creates the loom Session for a story.
+// StartSession loads or creates the noewright Session for a story.
 func (e *Engine) StartSession(ctx context.Context, story *domain.Story, platformID string) (*noewright.Session, error) {
 	if story.LoomSessionID != "" {
 		sessID, err := uuid.Parse(story.LoomSessionID)
 		if err != nil {
 			return nil, fmt.Errorf("invalid session id: %w", err)
 		}
-		sess, err := e.Loom.Sessions().Get(ctx, sessID)
+		sess, err := e.Noewright.Sessions().Get(ctx, sessID)
 		if err != nil {
 			return nil, fmt.Errorf("load session: %w", err)
 		}
@@ -161,7 +161,7 @@ func (e *Engine) StartSession(ctx context.Context, story *domain.Story, platform
 			Vars:     map[string]any{},
 		},
 	}
-	if err := e.Loom.Sessions().Create(ctx, sess); err != nil {
+	if err := e.Noewright.Sessions().Create(ctx, sess); err != nil {
 		return nil, fmt.Errorf("create session: %w", err)
 	}
 
@@ -174,7 +174,7 @@ func (e *Engine) StartSession(ctx context.Context, story *domain.Story, platform
 
 // Play executes one synchronous reader turn and returns the narrator's response.
 func (e *Engine) Play(ctx context.Context, sess *noewright.Session, agentSlug, readerInput string) (*PlayResult, error) {
-	step, err := e.Loom.RunStep(ctx, sess, noewright.StepRequest{
+	step, err := e.Noewright.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug: agentSlug,
 		Action: &noewright.Action{
 			Kind:    noewright.ActionFreeText,
@@ -192,7 +192,7 @@ func (e *Engine) Play(ctx context.Context, sess *noewright.Session, agentSlug, r
 
 	// Append to rolling history so future turns have full context.
 	appendHistory(sess, readerInput, response)
-	_ = e.Loom.Sessions().Update(ctx, sess)
+	_ = e.Noewright.Sessions().Update(ctx, sess)
 
 	return &PlayResult{Response: response, TurnIndex: step.Index}, nil
 }
@@ -209,7 +209,7 @@ func (e *Engine) PlayStream(ctx context.Context, sess *noewright.Session, agentS
 		defer close(result)
 
 		var streamed string
-		step, err := e.Loom.RunStep(ctx, sess, noewright.StepRequest{
+		step, err := e.Noewright.RunStep(ctx, sess, noewright.StepRequest{
 			AgentSlug: agentSlug,
 			Action: &noewright.Action{
 				Kind:    noewright.ActionFreeText,
@@ -234,7 +234,7 @@ func (e *Engine) PlayStream(ctx context.Context, sess *noewright.Session, agentS
 
 		// Append to rolling history.
 		appendHistory(sess, readerInput, response)
-		_ = e.Loom.Sessions().Update(ctx, sess)
+		_ = e.Noewright.Sessions().Update(ctx, sess)
 
 		result <- &PlayResult{Response: response, TurnIndex: step.Index}
 	}()
@@ -242,7 +242,7 @@ func (e *Engine) PlayStream(ctx context.Context, sess *noewright.Session, agentS
 	return chunks, result
 }
 
-// TurnsFromSession reconstructs Turn objects from a loom session's history.
+// TurnsFromSession reconstructs Turn objects from a noewright session's history.
 func TurnsFromSession(sess *noewright.Session) []domain.Turn {
 	turns := make([]domain.Turn, 0, len(sess.History))
 	for _, step := range sess.History {
@@ -266,7 +266,7 @@ func TurnsFromSession(sess *noewright.Session) []domain.Turn {
 	return turns
 }
 
-// SeedDefaultTopics ensures the built-in genre topics exist in the store and loom.
+// SeedDefaultTopics ensures the built-in genre topics exist in the store and noewright.
 func SeedDefaultTopics(ctx context.Context, st *store.Store, e *Engine) error {
 	defaults := []domain.Topic{
 		{Slug: "fantasy", Name: "High Fantasy", Genre: "fantasy", Description: "Swords, sorcery, and ancient prophecies."},

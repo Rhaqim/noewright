@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   {{if .Refresh}}<meta http-equiv="refresh" content="10;url={{.Refresh}}">{{end}}
-  <title>Media Story — Loom</title>
+  <title>Media Story — Noewright</title>
   <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
   <style>
     body { max-width: 850px; margin: 3rem auto; padding: 0 1rem; background: #121019; color: #eee8d7; font: 16px system-ui; }
@@ -16,7 +16,7 @@
 </head>
 <body>
   <h1>{{.Title}}</h1>
-  <p>A Loom-backed media narrative demo. Select an agent/model and generate one modality for the current scene.</p>
+  <p>A Noewright-backed media narrative demo. Select an agent/model and generate one modality for the current scene.</p>
   <form method="post" action="/generate">
     <label for="agent">Agent / model</label>
     <select id="agent" name="agent">{{range .Agents}}<option value="{{.Slug}}" {{if eq $.Selected .Slug}}selected{{end}}>{{.Name}} — {{.Modality}} / {{.Model}} (max {{.MaxPrompt}} chars)</option>{{end}}</select>
@@ -26,7 +26,7 @@
   </form>
   {{if .Error}}<p class="error">{{.Error}}</p>{{end}}
   {{with .Output}}<section class="card"><h2>{{.Agent.Name}} — {{.Agent.Modality}}</h2>
-    {{if .Pending}}<p>Generation is pending. Loom has persisted the provider task and its poller resolves it in the background; this page checks again every 10 seconds{{if $.Refresh}} (<a href="{{$.Refresh}}">check now</a>){{end}}.</p>{{end}}
+    {{if .Pending}}<p>Generation is pending. Noewright has persisted the provider task and its poller resolves it in the background; this page checks again every 10 seconds{{if $.Refresh}} (<a href="{{$.Refresh}}">check now</a>){{end}}.</p>{{end}}
     {{if .Text}}<p>{{.Text}}</p>{{end}}
     {{if and (eq (printf "%s" .Agent.Modality) "model3d") .URL}}
       <model-viewer src="{{.URL}}" {{if .Preview}}poster="{{.Preview}}"{{end}} alt="Generated 3D asset" camera-controls auto-rotate shadow-intensity="1"></model-viewer>

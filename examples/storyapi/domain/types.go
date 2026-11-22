@@ -43,7 +43,7 @@ type Story struct {
 func (s *Story) IsActive() bool { return s.Status == "active" }
 
 // Turn is one player→narrator exchange within a story.
-// It is reconstructed from the loom session history on demand.
+// It is reconstructed from the noewright session history on demand.
 type Turn struct {
 	Index       int       `json:"index"`
 	PlayerInput string    `json:"player_input"`

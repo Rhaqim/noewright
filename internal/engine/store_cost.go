@@ -56,7 +56,7 @@ func sqlUsage(ctx context.Context, db *sql.DB, prefix string, q UsageQuery) (*Us
 	if q.Target.Kind == TargetSessionID {
 		id, err := uuid.Parse(q.Target.Key)
 		if err != nil {
-			return nil, 0, fmt.Errorf("loom: session usage needs a session ID: %w", err)
+			return nil, 0, fmt.Errorf("noewright: session usage needs a session ID: %w", err)
 		}
 		col, key = "session_id", id
 	}

@@ -28,7 +28,7 @@ const (
 
 // errRenderTooLarge is the sentinel written by limitedWriter when the rendered
 // output exceeds maxRenderedBytes.
-var errRenderTooLarge = errors.New("loom: rendered template exceeds size limit")
+var errRenderTooLarge = errors.New("noewright: rendered template exceeds size limit")
 
 // limitedWriter caps how many bytes may be written, failing the render instead
 // of allowing an unbounded template expansion to exhaust memory.
@@ -53,7 +53,7 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 // expands without bound) degrades to an error rather than crashing the process.
 func renderTemplate(body string, session *Session, action *Action, inputs, params map[string]any, declared []string) (out string, err error) {
 	if len(body) > maxTemplateBodyBytes {
-		return "", fmt.Errorf("loom: template body exceeds %d bytes", maxTemplateBodyBytes)
+		return "", fmt.Errorf("noewright: template body exceeds %d bytes", maxTemplateBodyBytes)
 	}
 	// A prompt that declares required input variables must have every one of
 	// them supplied before it renders. Without this a template referencing an
@@ -69,7 +69,7 @@ func renderTemplate(body string, session *Session, action *Action, inputs, param
 	defer func() {
 		if r := recover(); r != nil {
 			out = ""
-			err = fmt.Errorf("loom: template render panicked: %v", r)
+			err = fmt.Errorf("noewright: template render panicked: %v", r)
 		}
 	}()
 
@@ -82,7 +82,7 @@ func renderTemplate(body string, session *Session, action *Action, inputs, param
 	// recover() or output cap can stop. No first-party template needs them, so
 	// reject them outright.
 	if len(tmpl.Templates()) > 1 || treeHasTemplateInvocation(tmpl.Tree) {
-		return "", fmt.Errorf("loom: nested template definitions/invocations are not allowed")
+		return "", fmt.Errorf("noewright: nested template definitions/invocations are not allowed")
 	}
 	data := map[string]any{
 		"Session": templateSession{

@@ -9,7 +9,7 @@ import (
 	"github.com/rhaqim/noewright/judge"
 )
 
-// judge.go adapts an Evaluator to loom's three judge interfaces. The mapping is
+// judge.go adapts an Evaluator to noewright's three judge interfaces. The mapping is
 // one-to-one and was not contrived for it — the judge modes and the question
 // types describe the same three decisions:
 //

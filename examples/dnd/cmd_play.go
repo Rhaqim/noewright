@@ -32,7 +32,7 @@ Special commands during play:
   !item drop X— drop item X from inventory
   !gold N     — set gold to N
   !quit       — end the session`,
-		Example: `  loom-dnd play --username thorin --campaign 4e9f2a...`,
+		Example: `  noewright-dnd play --username thorin --campaign 4e9f2a...`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if username == "" || campaignID == "" {
 				return fmt.Errorf("--username and --campaign are required")
@@ -47,7 +47,7 @@ Special commands during play:
 
 			user, err := st.GetUserByUsername(ctx, username)
 			if err != nil {
-				return fmt.Errorf("user %q not found (run: loom-dnd user create --username %s)", username, username)
+				return fmt.Errorf("user %q not found (run: noewright-dnd user create --username %s)", username, username)
 			}
 
 			campID, err := uuid.Parse(campaignID)
@@ -67,7 +67,7 @@ Special commands during play:
 				return fmt.Errorf("topic not found: %w", err)
 			}
 
-			// Ensure DM agent is seeded in loom for this topic.
+			// Ensure DM agent is seeded in noewright for this topic.
 			agentSlug, err := e.SeedDMAgent(ctx, topic)
 			if err != nil {
 				return fmt.Errorf("seed DM agent: %w", err)
@@ -76,7 +76,7 @@ Special commands during play:
 
 			character, err := st.GetCharacter(ctx, user.ID, campaign.ID)
 			if err != nil {
-				return fmt.Errorf("character not found — run: loom-dnd character create --username %s --campaign %s", username, campaignID)
+				return fmt.Errorf("character not found — run: noewright-dnd character create --username %s --campaign %s", username, campaignID)
 			}
 
 			sess, err := e.StartSession(ctx, campaign, character, user.ID.String())
@@ -163,7 +163,7 @@ Special commands during play:
 		},
 	}
 	cmd.Flags().StringVar(&username, "username", "", "Your player username (required)")
-	cmd.Flags().StringVar(&campaignID, "campaign", "", "Campaign ID (required) — see: loom-dnd campaign list")
+	cmd.Flags().StringVar(&campaignID, "campaign", "", "Campaign ID (required) — see: noewright-dnd campaign list")
 	return cmd
 }
 
@@ -283,8 +283,8 @@ func clearScreen() { fmt.Print("\033[H\033[2J") }
 func banner() string {
 	return ` ╔══════════════════════════════════════════════╗
  ║                                              ║
- ║   ⚔   loom-dnd  —  AI Dungeon Master  ⚔      ║
- ║         powered by the loom engine           ║
+ ║   ⚔   noewright-dnd  —  AI Dungeon Master  ⚔ ║
+ ║       powered by the noewright engine        ║
  ║                                              ║
  ╚══════════════════════════════════════════════╝
 `

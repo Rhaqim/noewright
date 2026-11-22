@@ -30,6 +30,6 @@ require (
 	golang.org/x/sync v0.25.0 // indirect
 )
 
-// In-repo development builds against the loom checkout. A release of this
-// module requires a tagged loom version instead (see README).
+// In-repo development builds against the noewright checkout. A release of this
+// module requires a tagged noewright version instead (see README).
 replace github.com/rhaqim/noewright => ../..

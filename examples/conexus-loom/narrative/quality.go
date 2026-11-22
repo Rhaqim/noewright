@@ -9,7 +9,7 @@ import (
 )
 
 // quality.go is the pre-process Quality Engine: deterministic post-hooks that
-// reject low-quality Author prose and ask loom to retry, mirroring the proven
+// reject low-quality Author prose and ask noewright to retry, mirroring the proven
 // Logician QAHook pattern. The Choice Directive policy is already the registered
 // QAHook (exactly-N options + verb-bucket dedupe); the hooks here add Slop Bans
 // and a Staleness Detector. They run only on the Author and pass everything else
@@ -27,7 +27,7 @@ var defaultSlopPhrases = []string{
 }
 
 // SlopBanHook rejects Author prose that contains any banned cliché phrase and
-// asks loom to retry, passing the offending phrases as Forbidden so the next
+// asks noewright to retry, passing the offending phrases as Forbidden so the next
 // attempt avoids them. With no phrases supplied it uses a built-in list.
 func SlopBanHook(banned ...string) noewright.PostHook {
 	if len(banned) == 0 {
@@ -78,7 +78,7 @@ func MaxWordsHook(max int) noewright.PostHook {
 }
 
 // StalenessHook rejects Author prose that overlaps the previous turn's prose by
-// at least threshold (word-trigram Jaccard), asking loom to retry with guidance
+// at least threshold (word-trigram Jaccard), asking noewright to retry with guidance
 // to advance the story. threshold <= 0 defaults to 0.7.
 func StalenessHook(threshold float64) noewright.PostHook {
 	if threshold <= 0 {

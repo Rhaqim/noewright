@@ -3,7 +3,7 @@ package engine
 // evalgate.go turns evaluation answers into control flow: a post-hook that
 // accepts a result, sends it back for a retry with a reason, or fails the step.
 //
-// It is the bridge between the EXPERIMENTAL evaluator subsystem and loom's
+// It is the bridge between the EXPERIMENTAL evaluator subsystem and noewright's
 // existing retry machinery. Nothing here runs unless the application both sets
 // Config.Evaluator and registers the returned hook, so the gate is opt-in twice
 // over; an engine with neither behaves exactly as it did before.
@@ -147,7 +147,7 @@ func (e *Engine) EvalGate(cfg EvalGateConfig) PostHook {
 	// nothing. Fail the step instead, loudly, on the first call.
 	if cfg.Questions == nil || cfg.Decide == nil {
 		return func(context.Context, *StepRequest, Result) (Result, error) {
-			return nil, fmt.Errorf("loom: EvalGate requires both Questions and Decide")
+			return nil, fmt.Errorf("noewright: EvalGate requires both Questions and Decide")
 		}
 	}
 
@@ -185,7 +185,7 @@ func (e *Engine) EvalGate(cfg EvalGateConfig) PostHook {
 		eval, err := ev.Evaluate(ctx, state, questions)
 		if err != nil {
 			if cfg.FailClosed {
-				return nil, fmt.Errorf("loom: eval gate on %q: %w", req.AgentSlug, err)
+				return nil, fmt.Errorf("noewright: eval gate on %q: %w", req.AgentSlug, err)
 			}
 			// Fail open: the decision layer is down, so the result stands. Log
 			// it — a gate that has silently stopped gating is exactly the kind
@@ -217,7 +217,7 @@ func (e *Engine) EvalGate(cfg EvalGateConfig) PostHook {
 		case EvalRetry:
 			return nil, ErrRetryWith(RetryAnnotation{Reason: d.Reason, Forbidden: d.Forbidden})
 		case EvalReject:
-			return nil, fmt.Errorf("loom: eval gate on %q rejected the result: %s", req.AgentSlug, d.Reason)
+			return nil, fmt.Errorf("noewright: eval gate on %q rejected the result: %s", req.AgentSlug, d.Reason)
 		default:
 			return res, nil
 		}

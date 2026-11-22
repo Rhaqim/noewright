@@ -1,5 +1,5 @@
 // Package migration converts a creator's block prompt (block.txt) into a
-// structured World + Constitution, using the migrate agent through loom. It
+// structured World + Constitution, using the migrate agent through noewright. It
 // mirrors the Conexus topic→world pipeline.
 package migration
 
@@ -16,20 +16,20 @@ import (
 
 // Service runs the migrate agent.
 type Service struct {
-	Loom    *noewright.Engine
-	Version int // migrate prompt/agent version
-	Log     ports.Logger
+	Noewright *noewright.Engine
+	Version   int // migrate prompt/agent version
+	Log       ports.Logger
 }
 
 // Migrate converts blockText into a World + Constitution.
 func (s *Service) Migrate(ctx context.Context, blockText string) (domain.World, domain.Constitution, error) {
 	// A short-lived session so the one-shot migration step has somewhere to live
-	// (its cost is still tracked by loom under the "migration" platform id).
+	// (its cost is still tracked by noewright under the "migration" platform id).
 	sess := &noewright.Session{PlatformID: "migration", State: noewright.State{Modality: noewright.ModalityText}}
-	if err := s.Loom.Sessions().Create(ctx, sess); err != nil {
+	if err := s.Noewright.Sessions().Create(ctx, sess); err != nil {
 		return domain.World{}, domain.Constitution{}, err
 	}
-	step, err := s.Loom.RunStep(ctx, sess, noewright.StepRequest{
+	step, err := s.Noewright.RunStep(ctx, sess, noewright.StepRequest{
 		AgentSlug:    narrative.AgentMigrate,
 		AgentVersion: s.Version,
 		Inputs:       map[string]any{"block": blockText},

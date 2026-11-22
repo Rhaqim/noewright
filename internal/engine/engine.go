@@ -1,4 +1,4 @@
-// Package engine is the internal implementation of the loom procgen engine:
+// Package engine is the internal implementation of the noewright procgen engine:
 // the Engine hub, its registry services, step/turn execution, hooks, cost and
 // budget tracking, branch/replay, the async poller, and SQL persistence.
 //
@@ -51,9 +51,9 @@ type Config struct {
 	// cache, or supply any implementation of the Cache interface (Redis, etc.).
 	// A nil Cache disables caching — every RunStep hits the database directly.
 	Cache Cache
-	// CacheKeyPrefix is the leading namespace on every cache key loom writes
+	// CacheKeyPrefix is the leading namespace on every cache key noewright writes
 	// (default "loom"). Set it when the Cache is shared with the application's
-	// own keys so loom's entries cannot collide with theirs — e.g. "myapp:loom".
+	// own keys so noewright's entries cannot collide with theirs — e.g. "myapp:loom".
 	// The schema prefix is always appended after it, so distinct engines stay
 	// distinct regardless.
 	CacheKeyPrefix string
@@ -179,7 +179,7 @@ type Engine struct {
 	mu sync.RWMutex
 }
 
-// New creates and initialises a Loom engine from the given Config.
+// New creates and initialises a Noewright engine from the given Config.
 // It does NOT run schema migrations — call NewSchemaLoader(dialect).Apply(ctx, db) first.
 func New(cfg Config) (*Engine, error) {
 	if cfg.DB == nil {
@@ -325,7 +325,7 @@ type TaskResolution struct {
 // or terminally failed. It runs in the poller goroutine, so it must be fast and
 // non-blocking; offload real work. Only one callback is held; a later call
 // replaces it. Embedders use this to write a resolved asset into their own
-// tables without reaching into loom's internal task tables.
+// tables without reaching into noewright's internal task tables.
 func (e *Engine) OnTaskResolved(fn func(context.Context, TaskResolution)) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -340,7 +340,7 @@ func (e *Engine) taskResolvedHook() func(context.Context, TaskResolution) {
 
 // TaskStatus reports a task's status ("pending", "ready", or "failed") and, when
 // ready, its resolved result. It lets an embedder check on an async job without
-// querying loom's internal tables. Returns ErrNotFound when no such task exists.
+// querying noewright's internal tables. Returns ErrNotFound when no such task exists.
 func (e *Engine) TaskStatus(ctx context.Context, taskID uuid.UUID) (string, Result, error) {
 	return sqlTaskStatus(ctx, e.db, e.prefix, taskID)
 }
@@ -446,7 +446,7 @@ func (e *Engine) Close(ctx context.Context) error {
 //   - ErrSessionNotPersisted — PARTIAL SUCCESS. The step ran and committed, and
 //     the returned *Step is non-nil and valid; only the loom_sessions row
 //     update failed, so session.State in the database (and any in-memory
-//     *Session) is stale. Callers using loom as a system of record must
+//     *Session) is stale. Callers using noewright as a system of record must
 //     reconcile — StateAt(ctx, id, step.Index) returns the authoritative
 //     post-step state — before trusting session state. This is the one error
 //     for which the returned *Step is non-nil.
@@ -596,7 +596,7 @@ func turnRoleOf(st *Step) string {
 	return r
 }
 
-// RecordStep appends a step whose result was written outside loom — a human
+// RecordStep appends a step whose result was written outside noewright — a human
 // game master's narration, a moderator's correction — to the session history.
 //
 // It is persisted and checkpointed exactly like a generated step, so forks and
@@ -608,10 +608,10 @@ func turnRoleOf(st *Step) string {
 // that asks for a retry is an error, since there is nothing to re-run.
 func (e *Engine) RecordStep(ctx context.Context, session *Session, ext ExternalStep) (*Step, error) {
 	if ext.Result == nil {
-		return nil, fmt.Errorf("loom: RecordStep needs a Result")
+		return nil, fmt.Errorf("noewright: RecordStep needs a Result")
 	}
 	if ext.Author == "" {
-		return nil, fmt.Errorf("loom: RecordStep needs an Author")
+		return nil, fmt.Errorf("noewright: RecordStep needs an Author")
 	}
 	return e.steps.run(ctx, session, StepRequest{
 		AgentSlug:    ext.AgentSlug,

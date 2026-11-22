@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
-# release.sh VERSION — cut a loom release (run via `make release VERSION=v0.0.3`).
+# release.sh VERSION — cut a noewright release (run via `make release VERSION=v0.0.3`).
 #
-# loom is two Go modules: the root (github.com/rhaqim/noewright) and
+# noewright is two Go modules: the root (github.com/rhaqim/noewright) and
 # generator/anthropic (github.com/rhaqim/noewright/generator/anthropic), which
-# requires loom. Both are released from ONE commit:
+# requires noewright. Both are released from ONE commit:
 #
 #   1. If generator/anthropic changed since its last tag, its go.mod is pointed
-#      at loom VERSION and that change is committed. (A go.mod may name a
+#      at noewright VERSION and that change is committed. (A go.mod may name a
 #      version before the tag exists; it only has to exist when downloaded.)
 #   2. That commit is tagged VERSION and, when the generator changed,
 #      generator/anthropic/VERSION.
 #
 # An unchanged generator is not retagged: its require is a minimum, so users
-# get the newer loom anyway. Nothing is pushed; the push command is printed.
+# get the newer noewright anyway. Nothing is pushed; the push command is printed.
 #
 # Set RELEASE_BRANCH to release from a branch other than main.
 set -euo pipefail
@@ -51,14 +51,14 @@ if [ "$release_gen" = 1 ]; then
   (cd "$GEN" && go mod edit -require="github.com/rhaqim/noewright@$VERSION")
   if [ -n "$(git status --porcelain -- "$GEN/go.mod")" ]; then
     git add "$GEN/go.mod"
-    git commit -q -m "Release $VERSION: $GEN requires loom $VERSION"
+    git commit -q -m "Release $VERSION: $GEN requires noewright $VERSION"
   fi
 fi
 
-git tag -a "$VERSION" -m "loom $VERSION"
+git tag -a "$VERSION" -m "noewright $VERSION"
 tags="$VERSION"
 if [ "$release_gen" = 1 ]; then
-  git tag -a "$GEN/$VERSION" -m "loom $GEN $VERSION"
+  git tag -a "$GEN/$VERSION" -m "noewright $GEN $VERSION"
   tags="$tags $GEN/$VERSION"
 else
   echo "release: $GEN unchanged since $last_gen_tag; not retagged"
