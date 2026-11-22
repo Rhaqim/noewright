@@ -1,3 +1,4 @@
+// Deprecated: loom is now Noewright. Use github.com/rhaqim/noewright/generator/anthropic.
 module github.com/rhaqim/loom/generator/anthropic
 
 go 1.26.0

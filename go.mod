@@ -1,3 +1,4 @@
+// Deprecated: loom is now Noewright. Use github.com/rhaqim/noewright.
 module github.com/rhaqim/loom
 
 go 1.26.0
