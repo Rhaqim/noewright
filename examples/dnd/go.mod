@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
-	github.com/rhaqim/loom v0.0.2
+	github.com/rhaqim/loom v0.0.3
 	github.com/spf13/cobra v1.10.2
 )
 
