@@ -74,7 +74,9 @@ type FlowAgent struct {
 	//
 	// EXPERIMENTAL: this field is part of the opt-in evaluator work and may
 	// change shape. It is inert unless set.
-	When func(ctx context.Context, g FollowerGate) (bool, error)
+	//
+	// When is code, so it is never encoded: a saved graph or flow cannot carry it.
+	When func(ctx context.Context, g FollowerGate) (bool, error) `json:"-"`
 }
 
 // FollowerGate is what a FlowAgent.When gate is given to decide on. It carries

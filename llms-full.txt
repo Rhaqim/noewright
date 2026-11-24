@@ -164,6 +164,78 @@ for slug, ferr := range turn.Errors {  // follower failures (never returned as e
 }
 ```
 
+## Graphs (RunGraph): branch, fan out, join, call Go code
+
+A turn has a fixed shape. A `Graph` does not: any node can feed one or more
+nodes, edges can carry conditions, and branches join again. `RunTurn` runs on
+the same executor, so everything above (sessions, steps, cost, hooks, budgets,
+forks) works unchanged inside a graph.
+
+Node kinds:
+
+- `NodeAgent` runs an agent (`Agent: &FlowAgent{...}`) and records a step.
+- `NodeFunc` calls a Go function registered with `e.RegisterFunc(name, fn)`. It
+  records a step only with `Record: "<agent slug>"`, like `RecordStep`.
+- `NodeDecide` asks the Evaluator one question about an input and emits the
+  answer as the node's route value (Choice: the option; Noul: "yes"/"no";
+  Score: the level).
+
+Edges (`GraphEdge`): no trigger fires always; `Route` matches the route value;
+`When` is an [expr](https://github.com/expr-lang/expr) condition; `Uncertain`
+fires when a decision's certainty is below the threshold (and then route edges
+do not); `Default` fires when nothing else did; `OnError` fires when the node
+failed. Data edges are inferred from template variables, as in flows: a node
+that reads `{{.Inputs.X}}` runs after the node producing `X`. A node runs once
+every branch into it that started in this run has finished.
+
+```go
+e.RegisterFunc("roll-dice", func(ctx context.Context, c noewright.FuncCall) (noewright.FuncResult, error) {
+    return noewright.FuncResult{Text: "d20=17"}, nil
+})
+
+run, err := e.RunGraph(ctx, sess, noewright.GraphRequest{
+    Graph: noewright.Graph{
+        Slug: "tabletop-round", Entry: "start",
+        Nodes: []noewright.GraphNode{
+            {ID: "start", Kind: noewright.NodeFunc, Func: "start"},
+            {ID: "rules", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-rules", OutputKey: "Rules"}},
+            {ID: "roll", Kind: noewright.NodeFunc, Func: "roll-dice", OutputKey: "Rolls"},
+            {ID: "gm", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-gm", OutputKey: "Narration", Stream: true}},
+            {ID: "referee", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-referee"}},
+            {ID: "chronicler", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-chronicler"}},
+        },
+        Edges: []noewright.GraphEdge{
+            {From: "start", To: []string{"rules"}, When: "vars.round > 0"},
+            {From: "start", To: []string{"gm"}, Default: true}, // opening round skips the dice
+            {From: "rules", To: []string{"roll"}},
+            {From: "roll", To: []string{"gm"}},
+            {From: "gm", To: []string{"referee", "chronicler"}}, // in parallel
+        },
+    },
+    Action:  action,
+    OnChunk: func(node string, c noewright.Chunk) { fmt.Print(c.Content) },
+})
+// run.Nodes["gm"], run.Outputs["Narration"], run.Skipped, run.Path, run.Errors
+```
+
+Expressions see `inputs` (run inputs and outputs by key), `data` (structured
+outputs: `data.Ticket.priority`), `vars` (session vars), `eval` (decisions by
+node id: `eval.intent.label`, `.p`, `.certainty`) and `run.errors`. A node's
+`Save: map[string]string{"var": "expr"}` writes session vars; declare
+`Graph.Vars["var"] = GraphVar{Reducer: ReduceAppend}` (or merge, sum) when
+several nodes write one var.
+
+Failures end the node's own branch unless an `OnError` edge leaves it, the
+node sets `Continue`, or it is `Required` (which fails the run). A graph that
+cannot run is refused with `ErrInvalidGraph` before anything runs.
+
+Saved graphs work like flows: `e.Graphs().Create` (version >= 1, `IsActive`
+drafts), `Get` (version 0 = latest active), `SetActive` (publish / rollback),
+`Validate` (registry checks, including parallel saves without a reducer),
+`Plan` (nodes, edges, problems and per-agent cost estimates for a visual
+editor) and `e.RunGraphBySlug`. A saved graph refuses `Agent.Overrides`: they
+carry API keys, so pass them on `GraphRequest.Overrides`.
+
 ## Shared sessions: participants, human steps, live events
 
 For a session several people share (a multiplayer game):
@@ -1671,6 +1743,9 @@ func (e *Engine) Generators() []string
     RegisterGenerator calls), not any database table — use it to validate an
     agent's GeneratorSlug before saving.
 
+func (e *Engine) Graphs() GraphRegistry
+    Graphs returns the saved-graph registry.
+
 func (e *Engine) Hooks() HookBus
     Hooks returns the engine's hook bus for registering pre/post processors.
 
@@ -1734,6 +1809,10 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
     A non-nil error means the graph could not run (ErrInvalidGraph) or a
     Required node failed; in the second case the partial GraphRun is returned
     with it. Other node failures are recorded on GraphRun.Errors.
+
+func (e *Engine) RunGraphBySlug(ctx context.Context, session *Session, owner, slug string, version int, req GraphRequest) (*GraphRun, error)
+    RunGraphBySlug loads a saved graph (version 0 = the latest active version)
+    within owner and runs it. req.Graph is ignored; req.Owner is set to owner.
 
 func (e *Engine) RunStep(ctx context.Context, session *Session, req StepRequest) (*Step, error)
     RunStep executes one step of the generation loop against session.
@@ -2067,7 +2146,9 @@ type FlowAgent struct {
 	//
 	// EXPERIMENTAL: this field is part of the opt-in evaluator work and may
 	// change shape. It is inert unless set.
-	When func(ctx context.Context, g FollowerGate) (bool, error)
+	//
+	// When is code, so it is never encoded: a saved graph or flow cannot carry it.
+	When func(ctx context.Context, g FollowerGate) (bool, error) `json:"-"`
 }
     FlowAgent is one agent participating in a turn.
 
@@ -2516,6 +2597,80 @@ const (
 	// node's route value. It records no step.
 	NodeDecide GraphNodeKind = "decide"
 )
+type GraphPlan struct {
+	Nodes    []GraphPlanNode
+	Edges    []GraphPlanEdge
+	Problems []string // empty for a valid graph
+}
+    GraphPlan is a graph's resolved wiring, for inspection and visualization.
+
+type GraphPlanEdge struct {
+	From, To string
+	// Data marks an edge inferred from a template variable (Var); data edges
+	// order nodes but never start them.
+	Data bool
+	Var  string
+	// Trigger describes a control edge: "", "route=<v>", "when: <expr>",
+	// "uncertain<p", "default" or "error".
+	Trigger string
+}
+    GraphPlanEdge is one edge in a plan.
+
+type GraphPlanNode struct {
+	ID        string
+	Kind      GraphNodeKind
+	Agent     string // agent slug, for an agent node
+	Func      string // function name, for a func node
+	OutputKey string
+	Consumes  []string // inputs its user template declares, for an agent node
+	// EstimatedUSD is the agent's mean cost per step over the last 30 days, 0
+	// when it has no history or is not an agent node. Priced is false when that
+	// history includes steps priced from the placeholder rate.
+	EstimatedUSD float64
+	Priced       bool
+}
+    GraphPlanNode is one node in a plan.
+
+type GraphRecord struct {
+	ID        uuid.UUID
+	Owner     string // opaque app-owned scope; "" = global
+	Slug      string
+	Version   int
+	Category  string
+	IsActive  bool
+	Graph     Graph // Graph.Slug is set from Slug on save
+	CreatedAt time.Time
+}
+    GraphRecord is a saved, versioned graph. Records never change: an edit is a
+    new version, and SetActive chooses which version serves.
+
+type GraphRegistry interface {
+	// Create saves a new version. It refuses a graph that cannot run (the
+	// checks RunGraph makes) and one that carries per-request data: Overrides
+	// hold API keys and belong on GraphRequest, never in the database.
+	Create(ctx context.Context, r *GraphRecord) error
+	Get(ctx context.Context, owner, slug string, version int) (*GraphRecord, error)
+	Latest(ctx context.Context, owner, slug string) (*GraphRecord, error)
+	LatestActive(ctx context.Context, owner, slug string) (*GraphRecord, error)
+	SetActive(ctx context.Context, owner, slug string, version int) error
+	// List returns an owner's graphs (optional category filter), every version.
+	List(ctx context.Context, owner, category string) ([]*GraphRecord, error)
+	Delete(ctx context.Context, owner, slug string, version int) error
+	// Validate runs RunGraph's checks plus the ones that need the registry:
+	// every agent exists in the owner, every input a node consumes is produced
+	// or declared, and no two nodes that can run in parallel Save the same var
+	// without a reducer. It returns nil or an error wrapping ErrInvalidGraph
+	// that joins every problem found.
+	Validate(ctx context.Context, owner string, g Graph) error
+	// Plan returns the graph as data — nodes, edges (inferred data edges
+	// marked), problems and an estimated cost per agent node — without
+	// refusing a broken graph. It is what a visual editor draws.
+	Plan(ctx context.Context, owner string, g Graph) (*GraphPlan, error)
+}
+    GraphRegistry saves, resolves, validates and plans graphs, with the same
+    version semantics as FlowRegistry: Get with version 0 resolves the latest
+    ACTIVE version, Latest includes drafts, SetActive is publish and rollback.
+
 type GraphRequest struct {
 	Graph Graph
 	// Owner scopes every agent lookup in the run, as TurnRequest.Owner does.

@@ -253,6 +253,42 @@ func migrations() []Migration {
 				return addColumnIfMissing(ctx, tx, d, p+"steps", "participant_id", "TEXT NOT NULL DEFAULT ''")
 			},
 		},
+		{
+			// Graphs: saved, versioned RunGraph definitions. The definition is
+			// one JSON document (nodes and edges differ in shape by kind, so
+			// child tables would be mostly empty columns). is_active is an INT
+			// as on flows, so the predicate is the same on both dialects.
+			Version: 11,
+			Name:    "graphs",
+			Up: func(ctx context.Context, tx *sql.Tx, p string, d Dialect) error {
+				stmt := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %sgraphs (
+					id          UUID PRIMARY KEY,
+					owner       TEXT NOT NULL DEFAULT '',
+					slug        TEXT NOT NULL,
+					version     INT NOT NULL,
+					category    TEXT NOT NULL DEFAULT '',
+					is_active   INT NOT NULL DEFAULT 1,
+					definition  JSONB NOT NULL,
+					created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+					UNIQUE (owner, slug, version)
+				)`, p)
+				if d == DialectSQLite {
+					stmt = fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %sgraphs (
+						id          TEXT PRIMARY KEY,
+						owner       TEXT NOT NULL DEFAULT '',
+						slug        TEXT NOT NULL,
+						version     INTEGER NOT NULL,
+						category    TEXT NOT NULL DEFAULT '',
+						is_active   INTEGER NOT NULL DEFAULT 1,
+						definition  TEXT NOT NULL,
+						created_at  DATETIME NOT NULL,
+						UNIQUE (owner, slug, version)
+					)`, p)
+				}
+				_, err := tx.ExecContext(ctx, stmt)
+				return err
+			},
+		},
 	}
 }
 

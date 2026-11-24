@@ -1146,3 +1146,25 @@ type GraphRun = engine.GraphRun
 // ErrInvalidGraph is returned when a graph cannot run as written. The wrapped
 // error names the problem.
 var ErrInvalidGraph = engine.ErrInvalidGraph
+
+////////////////////////////////////////////////////////////////////////////////
+// Graph store
+////////////////////////////////////////////////////////////////////////////////
+
+// GraphRecord is a saved, versioned graph. Records never change: an edit is a
+// new version, and SetActive chooses which version serves.
+type GraphRecord = engine.GraphRecord
+
+// GraphRegistry saves, resolves, validates and plans graphs, with the same
+// version semantics as FlowRegistry: Get with version 0 resolves the latest
+// ACTIVE version, Latest includes drafts, SetActive is publish and rollback.
+type GraphRegistry = engine.GraphRegistry
+
+// GraphPlan is a graph's resolved wiring, for inspection and visualization.
+type GraphPlan = engine.GraphPlan
+
+// GraphPlanNode is one node in a plan.
+type GraphPlanNode = engine.GraphPlanNode
+
+// GraphPlanEdge is one edge in a plan.
+type GraphPlanEdge = engine.GraphPlanEdge

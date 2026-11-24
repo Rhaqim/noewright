@@ -166,6 +166,7 @@ type Engine struct {
 	judges          JudgeRegistry
 	gc              *gcService
 	flows           *flowService
+	graphs          *graphService
 	poller          *asyncPollerService
 
 	onTaskResolved func(context.Context, TaskResolution)
@@ -259,6 +260,7 @@ func New(cfg Config) (*Engine, error) {
 	e.judges = newJudgeRegistryImpl()
 	e.gc = &gcService{e: e}
 	e.flows = &flowService{e: e}
+	e.graphs = &graphService{e: e}
 
 	if cfg.AsyncPoller.Workers > 0 {
 		e.poller = newAsyncPollerService(e, cfg.AsyncPoller)
