@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"reflect"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -21,6 +22,15 @@ import (
 // ErrInvalidGraph is returned when a graph cannot run as written. The wrapped
 // error names the problem.
 var ErrInvalidGraph = errors.New("noewright: invalid graph")
+
+// ErrGraphMismatch is returned when RunGraph is called for one graph on a
+// session paused in another. Set GraphRequest.Restart to abandon the pause.
+var ErrGraphMismatch = errors.New("noewright: session is paused in a different graph")
+
+// ErrWaitInput is returned when a paused run is resumed without an Action, or
+// with one its wait node does not accept. Nothing changes: the session stays
+// paused at the same node, so the caller can ask again.
+var ErrWaitInput = errors.New("noewright: input not accepted by the wait node")
 
 // RegisterFunc registers a Go function that NodeFunc nodes call by name.
 // Registering a name again replaces the function.
@@ -49,6 +59,7 @@ func exprShape() map[string]any {
 		"vars":   map[string]any{},
 		"eval":   map[string]any{},
 		"run":    map[string]any{},
+		"visits": map[string]any{},
 	}
 }
 
@@ -78,6 +89,8 @@ type compiledGraph struct {
 	data   [][]int // data-edge targets per node (inferred from templates)
 	saves  []map[string]*vm.Program
 	output []string // each node's output key
+	wait   []bool   // wait nodes: edges into them pause the run
+	match  []*regexp.Regexp
 }
 
 // compileGraph checks a graph's structure and compiles its expressions. It is
@@ -96,6 +109,8 @@ func (e *Engine) compileGraph(ctx context.Context, owner string, g Graph) (*comp
 	c.data = make([][]int, n)
 	c.saves = make([]map[string]*vm.Program, n)
 	c.output = make([]string, n)
+	c.wait = make([]bool, n)
+	c.match = make([]*regexp.Regexp, n)
 	producer := map[string]int{}
 	for i, nd := range g.Nodes {
 		if nd.ID == "" {
@@ -130,6 +145,27 @@ func (e *Engine) compileGraph(ctx context.Context, owner string, g Graph) (*comp
 				return nil, bad("decide node %q: %v", nd.ID, err)
 			}
 			c.output[i] = nd.OutputKey
+		case NodeWait:
+			c.wait[i] = true
+			c.output[i] = nd.OutputKey
+			if w := nd.Wait; w != nil {
+				switch w.Expect {
+				case "", ExpectAny, ExpectText:
+				case ExpectChoice:
+					if len(w.Options) == 0 {
+						return nil, bad("wait node %q expects a choice but lists no options", nd.ID)
+					}
+				default:
+					return nil, bad("wait node %q has unknown expect %q", nd.ID, w.Expect)
+				}
+				if w.Pattern != "" {
+					re, err := regexp.Compile(w.Pattern)
+					if err != nil {
+						return nil, bad("wait node %q pattern: %v", nd.ID, err)
+					}
+					c.match[i] = re
+				}
+			}
 		default:
 			return nil, bad("node %q has unknown kind %q", nd.ID, nd.Kind)
 		}
@@ -153,6 +189,9 @@ func (e *Engine) compileGraph(ctx context.Context, owner string, g Graph) (*comp
 	entry, ok := c.index[g.Entry]
 	if !ok {
 		return nil, bad("entry %q is not a node", g.Entry)
+	}
+	if c.wait[entry] {
+		return nil, bad("entry %q is a wait node; start the graph with the node that runs first", g.Entry)
 	}
 
 	hasIn := make([]bool, n)
@@ -181,16 +220,13 @@ func (e *Engine) compileGraph(ctx context.Context, owner string, g Graph) (*comp
 			return nil, bad("edge %d: uncertain must be between 0 and 1", k)
 		}
 		if ed.Route != "" && kind == NodeAgent {
-			return nil, bad("edge %d: route needs a decide or func node, %q is an agent", k, ed.From)
+			return nil, bad("edge %d: route needs a decide, func or wait node, %q is an agent", k, ed.From)
 		}
 		ce := compiledEdge{GraphEdge: ed, from: from}
 		for _, t := range ed.To {
 			to, ok := c.index[t]
 			if !ok {
 				return nil, bad("edge %d from %q leads to %q, which is not a node", k, ed.From, t)
-			}
-			if to == entry {
-				return nil, bad("edge %d from %q leads back to the entry %q", k, ed.From, t)
 			}
 			ce.to = append(ce.to, to)
 			hasIn[to] = true
@@ -224,10 +260,10 @@ func (e *Engine) compileGraph(ctx context.Context, owner string, g Graph) (*comp
 		}
 	}
 
-	// Cycles would leave nodes waiting forever; waits that can break a cycle
-	// are not supported yet.
+	// A cycle must pass through a wait node: edges into a wait pause the run
+	// rather than start the node, so only those break a loop.
 	if cyc := c.cycle(); cyc != "" {
-		return nil, bad("nodes form a cycle through %q", cyc)
+		return nil, bad("nodes form a cycle through %q with no wait node in it", cyc)
 	}
 	return c, nil
 }
@@ -241,7 +277,11 @@ func (c *compiledGraph) cycle() string {
 		state[i] = 1
 		var next []int
 		for _, k := range c.out[i] {
-			next = append(next, c.edges[k].to...)
+			for _, t := range c.edges[k].to {
+				if !c.wait[t] {
+					next = append(next, t)
+				}
+			}
 		}
 		next = append(next, c.data[i]...)
 		for _, j := range next {
@@ -278,6 +318,55 @@ type graphRunState struct {
 	edgeErrs map[string]error
 	failed   map[string]any // node id → error message, for run.errors
 	changed  bool           // session vars were written by the run
+	visits   map[string]int // node runs in this session's use of the graph
+	pauses   []int          // wait nodes an edge fired into, in firing order
+}
+
+// graphLock serialises RunGraph calls on one session within this engine.
+func (e *Engine) graphLock(id uuid.UUID) *sync.Mutex {
+	l, _ := e.graphLocks.LoadOrStore(id, &sync.Mutex{})
+	return l.(*sync.Mutex)
+}
+
+// waitInput checks an action against a wait node and returns the node's output.
+func waitInput(w *GraphWait, re *regexp.Regexp, a *Action) (string, error) {
+	if a == nil {
+		return "", fmt.Errorf("%w: resuming needs an Action", ErrWaitInput)
+	}
+	text := actionText(a)
+	expect := ExpectAny
+	if w != nil && w.Expect != "" {
+		expect = w.Expect
+	}
+	switch expect {
+	case ExpectText:
+		if text == "" {
+			return "", fmt.Errorf("%w: expects text", ErrWaitInput)
+		}
+		if re != nil && !re.MatchString(text) {
+			return "", fmt.Errorf("%w: %q does not match %s", ErrWaitInput, text, re)
+		}
+	case ExpectChoice:
+		if p, ok := a.Payload.(map[string]any); ok && a.Kind == ActionSelect {
+			if id, ok := p["option_id"].(string); ok && id != "" {
+				if slices.Contains(w.Options, id) {
+					return id, nil
+				}
+				return "", fmt.Errorf("%w: %q is not an option", ErrWaitInput, id)
+			}
+			if raw, ok := p["option_index"]; ok {
+				if i := toInt(raw); i >= 0 && i < len(w.Options) {
+					return w.Options[i], nil
+				}
+				return "", fmt.Errorf("%w: option index %v is out of range", ErrWaitInput, raw)
+			}
+		}
+		if slices.Contains(w.Options, text) {
+			return text, nil
+		}
+		return "", fmt.Errorf("%w: expects one of %v", ErrWaitInput, w.Options)
+	}
+	return text, nil
 }
 
 // RunGraph runs a graph against a session, from its entry node until nothing
@@ -292,9 +381,40 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 		return nil, err
 	}
 	g := req.Graph
+	lock := e.graphLock(session.ID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	// Where does this run start: the entry, or the wait the session is paused at?
+	entry, resumeOut := c.index[g.Entry], ""
+	cur := session.State.Graph
+	hadCursor := cur != nil
+	if cur != nil && req.Restart {
+		cur = nil
+	}
+	if cur != nil {
+		if cur.Graph != g.Slug {
+			return nil, fmt.Errorf("%w: paused in %q at %q, asked to run %q", ErrGraphMismatch, cur.Graph, cur.Node, g.Slug)
+		}
+		w, ok := c.index[cur.Node]
+		if !ok || !c.wait[w] {
+			return nil, fmt.Errorf("%w: the session is paused at %q, which graph %q has no wait node for; set Restart", ErrInvalidGraph, cur.Node, g.Slug)
+		}
+		out, err := waitInput(g.Nodes[w].Wait, c.match[w], req.Action)
+		if err != nil {
+			return nil, err
+		}
+		entry, resumeOut = w, out
+	}
 	runID := uuid.New()
 
 	inputs := map[string]any{}
+	visits := map[string]int{}
+	if cur != nil {
+		maps.Copy(inputs, cur.Inputs)
+		maps.Copy(visits, cur.Visits)
+		delete(inputs, "action") // the new action replaces the one the run paused after
+	}
 	maps.Copy(inputs, req.Inputs)
 	if _, ok := inputs["action"]; !ok {
 		if t := actionText(req.Action); t != "" {
@@ -304,14 +424,15 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 	bus := newBus()
 	defer bus.close()
 
-	gs := &graphRunState{data: map[string]any{}, evals: map[string]any{}, funcVars: map[int]map[string]any{}, edgeErrs: map[string]error{}, failed: map[string]any{}}
+	gs := &graphRunState{data: map[string]any{}, evals: map[string]any{}, funcVars: map[int]map[string]any{},
+		edgeErrs: map[string]error{}, failed: map[string]any{}, visits: visits}
 	nodeEvent := func(ev NodeEvent) {
 		if req.OnNode != nil {
 			req.OnNode(ev)
 		}
 	}
 
-	eg := &execGraph{entry: c.index[g.Entry], nodes: make([]execNode, len(g.Nodes)), succ: make([][]execEdge, len(g.Nodes))}
+	eg := &execGraph{entry: entry, nodes: make([]execNode, len(g.Nodes)), succ: make([][]execEdge, len(g.Nodes))}
 	for i := range g.Nodes {
 		nd := g.Nodes[i]
 		node := execNode{
@@ -345,14 +466,17 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 		if nd.Kind == NodeAgent {
 			node.inputs = nd.Agent.Inputs
 		}
-		node.run = e.graphNodeRun(session, req, c, gs, runID, i, bus, nodeEvent)
+		node.run = e.graphNodeRun(session, req, c, gs, runID, i, entry, resumeOut, bus, nodeEvent)
 		node.choose = e.graphNodeChoose(session, c, gs, i, inputs)
 
 		// Outgoing edges, in the order choose reports them: control edges as
-		// written (one per target), then inferred data edges.
+		// written (one per target, leaving out wait nodes — an edge into a wait
+		// pauses the run instead of starting it), then inferred data edges.
 		for _, k := range c.out[i] {
 			for _, to := range c.edges[k].to {
-				eg.succ[i] = append(eg.succ[i], execEdge{to: to})
+				if !c.wait[to] {
+					eg.succ[i] = append(eg.succ[i], execEdge{to: to})
+				}
 			}
 		}
 		for _, to := range c.data[i] {
@@ -370,6 +494,9 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 		Outputs: inputs,
 		Errors:  map[string]error{},
 	}
+	if entry != c.index[g.Entry] {
+		run.Resumed = g.Nodes[entry].ID
+	}
 	for k, step := range res.steps {
 		run.Nodes[g.Nodes[res.stepNodes[k]].ID] = step
 	}
@@ -384,10 +511,31 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 	}
 	run.Path = gs.path
 	changed := gs.changed
+	var pauses []int
+	for _, w := range gs.pauses {
+		if !slices.Contains(pauses, w) {
+			pauses = append(pauses, w)
+		}
+	}
+	gs.visits = maps.Clone(gs.visits)
+	visitsNow := gs.visits
 	gs.mu.Unlock()
+	// Skipped lists nodes this run could have reached that no edge started —
+	// not wait nodes, and not the nodes before a resumed wait.
+	reach := map[int]bool{entry: true}
+	for queue := []int{entry}; len(queue) > 0; queue = queue[1:] {
+		for _, ed := range eg.succ[queue[0]] {
+			if !reach[ed.to] {
+				reach[ed.to] = true
+				queue = append(queue, ed.to)
+			}
+		}
+	}
 	for _, i := range res.dead {
-		run.Skipped = append(run.Skipped, g.Nodes[i].ID)
-		nodeEvent(NodeEvent{Node: g.Nodes[i].ID, Kind: NodeSkipped})
+		if reach[i] && !c.wait[i] {
+			run.Skipped = append(run.Skipped, g.Nodes[i].ID)
+			nodeEvent(NodeEvent{Node: g.Nodes[i].ID, Kind: NodeSkipped})
+		}
 	}
 	run.Messages = bus.Messages()
 	if cost, err := e.runCost(ctx, res.steps); err != nil {
@@ -396,30 +544,90 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 		run.Cost = cost
 	}
 
-	// Vars written by Save mappings and functions after the last step was
-	// persisted are saved with the session row here.
+	var waitErr error
+	if len(pauses) > 1 {
+		waitErr = fmt.Errorf("%w: the run reached wait nodes %q and %q at once; a session can wait in one place",
+			ErrInvalidGraph, g.Nodes[pauses[0]].ID, g.Nodes[pauses[1]].ID)
+		pauses = pauses[:1]
+	}
+
+	// Where the session stands now: paused at a wait, or finished (no cursor).
+	// The cursor is written into the session row and into the checkpoint of
+	// the run's last step, so Fork at that step resumes at the wait.
+	e.mu.Lock()
+	var cursorChanged bool
+	if res.abort == nil && len(pauses) == 1 {
+		w := pauses[0]
+		visitsNow[g.Nodes[w].ID]++
+		session.State.Graph = &GraphCursor{Graph: g.Slug, Version: req.graphVersion, Node: g.Nodes[w].ID,
+			Inputs: maps.Clone(inputs), Visits: visitsNow}
+		run.Waiting = g.Nodes[w].ID
+		if wt := g.Nodes[w].Wait; wt != nil {
+			run.Prompt = wt.Prompt
+		}
+		cursorChanged = true
+	} else if res.abort == nil && hadCursor {
+		session.State.Graph = nil
+		cursorChanged = true
+	}
 	var persistErr error
-	if changed {
-		e.mu.Lock()
+	if changed || cursorChanged {
+		if cursorChanged && len(res.steps) > 0 {
+			last := res.steps[0].Index
+			for _, st := range res.steps {
+				last = max(last, st.Index)
+			}
+			if err := sqlUpdateSnapshot(ctx, e.db, e.prefix, session.ID, last, session.State); err != nil {
+				persistErr = fmt.Errorf("%w: checkpoint: %v", ErrSessionNotPersisted, err)
+			}
+		}
 		if err := e.sessions.Update(ctx, session); err != nil {
 			persistErr = fmt.Errorf("%w: %v", ErrSessionNotPersisted, err)
 		}
-		e.mu.Unlock()
 	}
+	e.mu.Unlock()
 
+	if run.Waiting != "" {
+		e.emit(ctx, SessionEvent{Type: EventGraphWait, SessionID: session.ID, StepIndex: -1, TurnID: runID, Node: run.Waiting})
+	}
 	e.emit(ctx, SessionEvent{Type: EventGraphDone, SessionID: session.ID, StepIndex: -1, TurnID: runID})
 	if res.abort != nil {
 		return run, fmt.Errorf("noewright: graph %q node %q: %w", g.Slug, g.Nodes[res.abortNode].ID, res.abort)
+	}
+	if waitErr != nil {
+		return run, waitErr
 	}
 	return run, persistErr
 }
 
 // graphNodeRun builds the closure that does node i's work.
 func (e *Engine) graphNodeRun(session *Session, req GraphRequest, c *compiledGraph, gs *graphRunState,
-	runID uuid.UUID, i int, bus *busImpl, nodeEvent func(NodeEvent)) func(context.Context, map[string]any) (*execOut, error) {
+	runID uuid.UUID, i, entry int, resumeOut string, bus *busImpl, nodeEvent func(NodeEvent)) func(context.Context, map[string]any) (*execOut, error) {
+	run := e.graphNodeWork(session, req, c, gs, runID, i, entry, resumeOut, bus, nodeEvent)
+	nd := c.g.Nodes[i]
+	return func(ctx context.Context, in map[string]any) (*execOut, error) {
+		// Count the visit, and refuse one over the node's cap. A resumed wait
+		// was counted when the run paused at it.
+		gs.mu.Lock()
+		if i != entry || !c.wait[i] {
+			if nd.MaxVisits > 0 && gs.visits[nd.ID] >= nd.MaxVisits {
+				gs.mu.Unlock()
+				nodeEvent(NodeEvent{Node: nd.ID, Kind: NodeStarted})
+				return nil, fmt.Errorf("noewright: node %q has run %d times, its MaxVisits", nd.ID, nd.MaxVisits)
+			}
+			gs.visits[nd.ID]++
+		}
+		gs.mu.Unlock()
+		return run(ctx, in)
+	}
+}
+
+// graphNodeWork builds the closure that does node i's own work.
+func (e *Engine) graphNodeWork(session *Session, req GraphRequest, c *compiledGraph, gs *graphRunState,
+	runID uuid.UUID, i, entry int, resumeOut string, bus *busImpl, nodeEvent func(NodeEvent)) func(context.Context, map[string]any) (*execOut, error) {
 	nd := c.g.Nodes[i]
 	role := "node:" + nd.ID
-	isEntry := nd.ID == c.g.Entry
+	isEntry := i == entry
 	keepData := func(r Result) {
 		if sr, ok := r.(*StructuredResult); ok && c.output[i] != "" {
 			gs.mu.Lock()
@@ -519,6 +727,41 @@ func (e *Engine) graphNodeRun(session *Session, req GraphRequest, c *compiledGra
 			return out, nil
 		}
 
+	case NodeWait:
+		// A wait node only ever runs as the entry of a resumed run; its output
+		// is the input RunGraph already checked.
+		return func(ctx context.Context, in map[string]any) (*execOut, error) {
+			nodeEvent(NodeEvent{Node: nd.ID, Kind: NodeStarted})
+			var result Result = NewTextResult(resumeOut, "stop", 0, 0)
+			out := &execOut{result: result}
+			if nd.Wait != nil && nd.Wait.Expect == ExpectChoice {
+				out.route = resumeOut
+			}
+			if nd.Wait != nil && nd.Wait.Record != "" {
+				author := "participant"
+				if req.Action != nil && req.Action.ParticipantID != "" {
+					author = "participant:" + req.Action.ParticipantID
+				}
+				step, err := e.steps.run(ctx, session, StepRequest{
+					external:  result,
+					author:    author,
+					AgentSlug: nd.Wait.Record,
+					Owner:     req.Owner,
+					Action:    req.Action,
+					Inputs:    in,
+					turnID:    runID,
+					turnRole:  role,
+					bus:       bus,
+				})
+				if !stepSucceeded(step, err) {
+					return nil, err
+				}
+				out.step = step
+				return out, err
+			}
+			return out, nil
+		}
+
 	default: // NodeDecide
 		dec := nd.Decide
 		return func(ctx context.Context, in map[string]any) (*execOut, error) {
@@ -592,7 +835,14 @@ func (e *Engine) graphNodeChoose(session *Session, c *compiledGraph, gs *graphRu
 			if vars == nil {
 				vars = map[string]any{}
 			}
-			return map[string]any{"inputs": inputs, "data": data, "vars": vars, "eval": evals, "run": map[string]any{"errors": failed}}
+			gs.mu.Lock()
+			visits := map[string]any{}
+			for k, v := range gs.visits {
+				visits[k] = v
+			}
+			gs.mu.Unlock()
+			return map[string]any{"inputs": inputs, "data": data, "vars": vars, "eval": evals,
+				"run": map[string]any{"errors": failed}, "visits": visits}
 		}
 
 		// apply writes vars through their reducers.
@@ -703,7 +953,16 @@ func (e *Engine) graphNodeChoose(session *Session, c *compiledGraph, gs *graphRu
 
 		for _, k := range c.out[i] {
 			reason, f := fired[k]
-			for range c.edges[k].to {
+			for _, to := range c.edges[k].to {
+				if c.wait[to] {
+					// Not an executor edge: firing it pauses the run there.
+					if f {
+						gs.mu.Lock()
+						gs.pauses = append(gs.pauses, to)
+						gs.mu.Unlock()
+					}
+					continue
+				}
 				fire = append(fire, f)
 			}
 			if f {

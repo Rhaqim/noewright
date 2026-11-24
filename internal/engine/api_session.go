@@ -43,6 +43,9 @@ type State struct {
 	// records the membership at that step and a fork restores it. Change it
 	// with Engine.AddParticipant / RemoveParticipant.
 	Participants []Participant
+	// Graph is where the session is paused in a graph run, nil when it is not.
+	// Only the engine writes it (RunGraph); steps and hooks never change it.
+	Graph *GraphCursor `json:",omitempty"`
 }
 
 // Participant is one person in a shared session. Role is application-defined
@@ -81,6 +84,15 @@ func (s *Session) forStep() *Session {
 	cp.State.Snapshot = bytes.Clone(s.State.Snapshot)
 	cp.State.AvailableActions = slices.Clone(s.State.AvailableActions)
 	cp.State.Participants = slices.Clone(s.State.Participants)
+	// The graph cursor is engine-owned: a step works on its own copy so a hook
+	// cannot move the session through a shared pointer, and mergeState never
+	// copies it back.
+	if s.State.Graph != nil {
+		gc := *s.State.Graph
+		gc.Inputs = maps.Clone(gc.Inputs)
+		gc.Visits = maps.Clone(gc.Visits)
+		cp.State.Graph = &gc
+	}
 	return &cp
 }
 

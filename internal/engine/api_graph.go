@@ -26,6 +26,10 @@ const (
 	// NodeDecide asks the Evaluator one question and emits the answer as the
 	// node's route value. It records no step.
 	NodeDecide GraphNodeKind = "decide"
+	// NodeWait pauses the run until the next RunGraph call brings an Action.
+	// The person's input becomes the node's output, and is recorded as a step
+	// only when GraphWait.Record names an agent to attribute it to.
+	NodeWait GraphNodeKind = "wait"
 )
 
 // Graph is a set of nodes joined by edges, run with Engine.RunGraph.
@@ -96,6 +100,13 @@ type GraphNode struct {
 	// Decide configures a NodeDecide.
 	Decide *GraphDecision
 
+	// Wait configures a NodeWait.
+	Wait *GraphWait
+
+	// MaxVisits caps how many times the node may run in one session's use of
+	// the graph (across resumed runs). 0 = no cap. A node over its cap fails.
+	MaxVisits int
+
 	// OutputKey names the input a NodeFunc or NodeDecide output is exposed under
 	// to later nodes. A NodeAgent uses Agent.OutputKey.
 	OutputKey string
@@ -121,6 +132,44 @@ type GraphDecision struct {
 	// Over names the input whose text is evaluated, usually an earlier node's
 	// output key. Empty evaluates the action text.
 	Over string
+}
+
+// WaitExpect says what input a NodeWait accepts.
+type WaitExpect string
+
+const (
+	// ExpectAny accepts any action. Its text, if any, is the node's output.
+	ExpectAny WaitExpect = "any"
+	// ExpectText accepts free text, matching Pattern when one is set.
+	ExpectText WaitExpect = "text"
+	// ExpectChoice accepts one of Options: an ActionSelect (by option_id or
+	// option_index), or free text equal to an option. The option is the node's
+	// output and its route value.
+	ExpectChoice WaitExpect = "choice"
+)
+
+// GraphWait configures a NodeWait.
+type GraphWait struct {
+	Expect  WaitExpect // "" = ExpectAny
+	Options []string   // for ExpectChoice
+	Pattern string     // regular expression free text must match (ExpectText)
+	// Prompt is shown to whoever the run waits for; RunGraph returns it on
+	// GraphRun.Prompt. It is a hint for the caller's UI, not sent to any model.
+	Prompt string
+	// Record, when set, saves the person's input as a step attributed to this
+	// agent slug, with the Action recorded on it — a human-written turn.
+	Record string
+}
+
+// GraphCursor is where a session stands in a graph between runs: the wait
+// node it is paused at and what the run had produced. It is engine-owned
+// session state, checkpointed with the run's last step so Fork resumes there.
+type GraphCursor struct {
+	Graph   string         // graph slug
+	Version int            // saved graph version, 0 for an in-code graph
+	Node    string         // the wait node
+	Inputs  map[string]any // the run's inputs and outputs when it paused
+	Visits  map[string]int // node runs so far, for MaxVisits and expressions
 }
 
 // GraphEdge joins one node to one or more nodes. At most one of Route, When,
@@ -194,6 +243,13 @@ type GraphRequest struct {
 	// OnNode receives each node's progress. It is called from the node's own
 	// goroutine and must not block.
 	OnNode func(ev NodeEvent)
+	// Restart discards a cursor the session holds (for this graph or another)
+	// and runs from the entry. Without it, a session paused in this graph
+	// resumes at its wait node, and one paused in a different graph is refused
+	// with ErrGraphMismatch.
+	Restart bool
+
+	graphVersion int // set by RunGraphBySlug, stored on the cursor
 }
 
 // NodeEventKind names a NodeEvent.
@@ -235,6 +291,8 @@ type GraphHop struct {
 //	eval     decision results by node id: label, p, certainty, noul, score,
 //	         probabilities
 //	run      errors: node id → error message, for nodes failed so far
+//	visits   node id → how many times it has run in this session's use of
+//	         the graph, resumed runs included
 type GraphRun struct {
 	ID       uuid.UUID
 	Steps    []*Step          // recorded steps, in completion order
@@ -244,6 +302,10 @@ type GraphRun struct {
 	Skipped  []string         // nodes no edge reached
 	Path     []GraphHop       // every edge taken, in the order taken
 	Messages []Message        // everything published on the run's bus
+	// Resumed names the wait node this run resumed from ("" = it started at
+	// the entry). Waiting names the wait node it paused at ("" = it finished),
+	// and Prompt is that node's GraphWait.Prompt.
+	Resumed, Waiting, Prompt string
 	// Cost totals the cost rows of the run's steps. Recorded steps (functions
 	// with Record) have none. PricingConfigured is false when any row was priced
 	// from the placeholder rate: show the USD as unknown then.

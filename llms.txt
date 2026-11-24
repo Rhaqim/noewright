@@ -229,6 +229,36 @@ Failures end the node's own branch unless an `OnError` edge leaves it, the
 node sets `Continue`, or it is `Required` (which fails the run). A graph that
 cannot run is refused with `ErrInvalidGraph` before anything runs.
 
+### Waiting for a person (NodeWait)
+
+A `NodeWait` pauses the run until the next `RunGraph` call brings an `Action`.
+An edge into a wait node pauses the run there; the run returns with
+`run.Waiting` (the node) and `run.Prompt`. The session stores a cursor
+(`State.Graph`: the node, the run's inputs and outputs so far, visit counts),
+and the checkpoint of the run's last step carries it, so `Fork` at that step
+resumes at the wait.
+
+```go
+{ID: "clarify", Kind: noewright.NodeWait, OutputKey: "Answer", Wait: &noewright.GraphWait{
+    Expect: noewright.ExpectText,        // or ExpectChoice with Options, or ExpectAny
+    Prompt: "Refund or bug report?",
+    Record: "",                          // an agent slug records the input as a step (a human GM)
+}},
+// edges: {From: "intent", Uncertain: 0.6, To: []string{"clarify"}}, {From: "clarify", To: []string{"intent"}}
+
+run, _ := e.RunGraph(ctx, sess, req)            // run.Waiting == "clarify"
+run, err = e.RunGraph(ctx, sess, noewright.GraphRequest{Graph: g, Action: answer}) // resumes at clarify
+```
+
+- A loop must pass through a wait node; other cycles are refused.
+- An input the wait does not accept returns `ErrWaitInput` and changes nothing.
+- A session paused in another graph returns `ErrGraphMismatch`; set
+  `GraphRequest.Restart` to abandon the pause.
+- `RunGraphBySlug` resumes on the version the session paused in, so publishing a
+  new version never moves someone mid-run.
+- `GraphNode.MaxVisits` caps how often a node runs; expressions read `visits`.
+- Calls on one session are serialised.
+
 Saved graphs work like flows: `e.Graphs().Create` (version >= 1, `IsActive`
 drafts), `Get` (version 0 = latest active), `SetActive` (publish / rollback),
 `Validate` (registry checks, including parallel saves without a reducer),

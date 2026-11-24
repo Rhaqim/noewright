@@ -39,6 +39,21 @@ func sqlInsertSnapshot(ctx context.Context, db execer, prefix string, id, sessio
 	return err
 }
 
+// sqlUpdateSnapshot rewrites the checkpoint of one step with state. RunGraph
+// uses it when a run pauses, so the checkpoint of the run's last step carries
+// the graph cursor and a Fork there resumes at the wait.
+func sqlUpdateSnapshot(ctx context.Context, db execer, prefix string, sessionID uuid.UUID, stepIndex int, state State) error {
+	stateJSON, _ := json.Marshal(state)
+	varsJSON, _ := json.Marshal(state.Vars)
+	if len(varsJSON) == 0 || string(varsJSON) == "null" {
+		varsJSON = []byte("{}")
+	}
+	_, err := db.ExecContext(ctx, fmt.Sprintf(`
+		UPDATE %sstate_snapshots SET snapshot=$1, vars=$2 WHERE session_id=$3 AND step_index=$4`, prefix),
+		stateJSON, varsJSON, sessionID, stepIndex)
+	return err
+}
+
 // sqlQuerySnapshotAt returns the full checkpointed State at or before stepIndex
 // for a session. found is false when no checkpoint exists that early.
 func sqlQuerySnapshotAt(ctx context.Context, db *sql.DB, prefix string, sessionID uuid.UUID, stepIndex int) (state State, found bool, err error) {

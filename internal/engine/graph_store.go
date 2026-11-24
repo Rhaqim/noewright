@@ -258,13 +258,21 @@ func graphNotFound(err error, slug string, version int) error {
 
 // RunGraphBySlug loads a saved graph (version 0 = the latest active version)
 // within owner and runs it. req.Graph is ignored; req.Owner is set to owner.
+//
+// A session paused in this graph resumes on the version it paused in, not the
+// latest active one, so publishing a new version never moves someone mid-run;
+// pass an explicit version or set Restart to change that.
 func (e *Engine) RunGraphBySlug(ctx context.Context, session *Session, owner, slug string, version int, req GraphRequest) (*GraphRun, error) {
+	if cur := session.State.Graph; version == 0 && !req.Restart && cur != nil && cur.Graph == slug && cur.Version > 0 {
+		version = cur.Version
+	}
 	rec, err := e.graphs.Get(ctx, owner, slug, version)
 	if err != nil {
 		return nil, fmt.Errorf("noewright: run graph %q: %w", slug, err)
 	}
 	req.Graph = rec.Graph
 	req.Owner = owner
+	req.graphVersion = rec.Version
 	return e.RunGraph(ctx, session, req)
 }
 

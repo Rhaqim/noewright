@@ -227,6 +227,70 @@ func graphStore(t *testing.T, e *noewright.Engine) {
 		t.Fatalf("plan of a bad graph = %+v, %v; want problems", badPlan, err)
 	}
 
+	// A session paused in v1 resumes on v1 after v2 is published, and a fork
+	// at the waiting step resumes too (the checkpoint carries the cursor).
+	agent("ask-start", "START")
+	agent("ask-v1", "V1[{{.Inputs.Answer}}]", "Answer")
+	agent("ask-v2", "V2[{{.Inputs.Answer}}]", "Answer")
+	asking := func(final string) noewright.Graph {
+		return noewright.Graph{Entry: "start",
+			Nodes: []noewright.GraphNode{
+				{ID: "start", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "ask-start"}},
+				{ID: "ask", Kind: noewright.NodeWait, OutputKey: "Answer", Wait: &noewright.GraphWait{Expect: noewright.ExpectText, Prompt: "Name?"}},
+				{ID: "reply", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: final}},
+			},
+			Edges: []noewright.GraphEdge{{From: "start", To: []string{"ask"}}, {From: "ask", To: []string{"reply"}}}}
+	}
+	if err := e.Graphs().Create(ctx, &noewright.GraphRecord{Owner: owner, Slug: "asking", Version: 1, IsActive: true, Graph: asking("ask-v1")}); err != nil {
+		t.Fatal(err)
+	}
+	waiting := &noewright.Session{PlatformID: "p"}
+	if err := e.Sessions().Create(ctx, waiting); err != nil {
+		t.Fatal(err)
+	}
+	paused, err := e.RunGraphBySlug(ctx, waiting, owner, "asking", 0, noewright.GraphRequest{})
+	if err != nil || paused.Waiting != "ask" || paused.Prompt != "Name?" {
+		t.Fatalf("paused = %+v, %v", paused, err)
+	}
+	if err := e.Graphs().Create(ctx, &noewright.GraphRecord{Owner: owner, Slug: "asking", Version: 2, IsActive: true, Graph: asking("ask-v2")}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Graphs().SetActive(ctx, owner, "asking", 2); err != nil {
+		t.Fatal(err)
+	}
+	branch, err := e.Sessions().Fork(ctx, waiting.ID, paused.Nodes["start"].Index)
+	if err != nil {
+		t.Fatal(err)
+	}
+	say := func(s string) *noewright.Action {
+		return &noewright.Action{Kind: noewright.ActionFreeText, Payload: map[string]any{"text": s}}
+	}
+	resumed, err := e.RunGraphBySlug(ctx, waiting, owner, "asking", 0, noewright.GraphRequest{Action: say("Ada")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := noewright.ResultText(resumed.Nodes["reply"].Result); got != "V1[Ada]" {
+		t.Fatalf("resumed on %q, want v1's reply", got)
+	}
+	onBranch, err := e.RunGraphBySlug(ctx, branch, owner, "asking", 0, noewright.GraphRequest{Action: say("Tunde")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := noewright.ResultText(onBranch.Nodes["reply"].Result); got != "V1[Tunde]" {
+		t.Fatalf("fork resumed with %q, want v1's reply", got)
+	}
+	fresh := &noewright.Session{PlatformID: "p"}
+	if err := e.Sessions().Create(ctx, fresh); err != nil {
+		t.Fatal(err)
+	}
+	if run, err := e.RunGraphBySlug(ctx, fresh, owner, "asking", 0, noewright.GraphRequest{}); err != nil || run.Waiting != "ask" {
+		t.Fatalf("fresh session = %+v, %v", run, err)
+	}
+	if run, err := e.RunGraphBySlug(ctx, fresh, owner, "asking", 0, noewright.GraphRequest{Action: say("Ngozi")}); err != nil ||
+		noewright.ResultText(run.Nodes["reply"].Result) != "V2[Ngozi]" {
+		t.Fatalf("a session that started on v2 should finish on v2: %+v, %v", run, err)
+	}
+
 	if err := e.Graphs().Delete(ctx, owner, "support", 2); err != nil {
 		t.Fatal(err)
 	}

@@ -35,6 +35,8 @@ const (
 	// EventGraphHop fires for every edge a RunGraph run takes. Node is the
 	// node the edge leaves; Hop describes it.
 	EventGraphHop SessionEventType = "graph.hop"
+	// EventGraphWait fires when a RunGraph run pauses at a wait node (Node).
+	EventGraphWait SessionEventType = "graph.wait"
 	// EventGraphDone fires when a RunGraph run finishes. TurnID is the run ID.
 	EventGraphDone SessionEventType = "graph.done"
 )

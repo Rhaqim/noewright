@@ -786,6 +786,9 @@ const EventForked = engine.EventForked
 // node the edge leaves; Hop describes it.
 const EventGraphHop = engine.EventGraphHop
 
+// EventGraphWait fires when a RunGraph run pauses at a wait node (Node).
+const EventGraphWait = engine.EventGraphWait
+
 // EventGraphDone fires when a RunGraph run finishes. TurnID is the run ID.
 const EventGraphDone = engine.EventGraphDone
 
@@ -1050,6 +1053,11 @@ const NodeFunc = engine.NodeFunc
 // node's route value. It records no step.
 const NodeDecide = engine.NodeDecide
 
+// NodeWait pauses the run until the next RunGraph call brings an Action.
+// The person's input becomes the node's output, and is recorded as a step
+// only when GraphWait.Record names an agent to attribute it to.
+const NodeWait = engine.NodeWait
+
 // Graph is a set of nodes joined by edges, run with Engine.RunGraph.
 //
 // Edges come from two places. Control edges are written in Edges; they start
@@ -1087,6 +1095,28 @@ type GraphNode = engine.GraphNode
 
 // GraphDecision is the question a NodeDecide asks.
 type GraphDecision = engine.GraphDecision
+
+// WaitExpect says what input a NodeWait accepts.
+type WaitExpect = engine.WaitExpect
+
+// ExpectAny accepts any action. Its text, if any, is the node's output.
+const ExpectAny = engine.ExpectAny
+
+// ExpectText accepts free text, matching Pattern when one is set.
+const ExpectText = engine.ExpectText
+
+// ExpectChoice accepts one of Options: an ActionSelect (by option_id or
+// option_index), or free text equal to an option. The option is the node's
+// output and its route value.
+const ExpectChoice = engine.ExpectChoice
+
+// GraphWait configures a NodeWait.
+type GraphWait = engine.GraphWait
+
+// GraphCursor is where a session stands in a graph between runs: the wait
+// node it is paused at and what the run had produced. It is engine-owned
+// session state, checkpointed with the run's last step so Fork resumes there.
+type GraphCursor = engine.GraphCursor
 
 // GraphEdge joins one node to one or more nodes. At most one of Route, When,
 // Uncertain, Default and OnError may be set; with none the edge always fires.
@@ -1137,6 +1167,8 @@ type GraphHop = engine.GraphHop
 //	eval     decision results by node id: label, p, certainty, noul, score,
 //	         probabilities
 //	run      errors: node id → error message, for nodes failed so far
+//	visits   node id → how many times it has run in this session's use of
+//	         the graph, resumed runs included
 type GraphRun = engine.GraphRun
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1146,6 +1178,15 @@ type GraphRun = engine.GraphRun
 // ErrInvalidGraph is returned when a graph cannot run as written. The wrapped
 // error names the problem.
 var ErrInvalidGraph = engine.ErrInvalidGraph
+
+// ErrGraphMismatch is returned when RunGraph is called for one graph on a
+// session paused in another. Set GraphRequest.Restart to abandon the pause.
+var ErrGraphMismatch = engine.ErrGraphMismatch
+
+// ErrWaitInput is returned when a paused run is resumed without an Action, or
+// with one its wait node does not accept. Nothing changes: the session stays
+// paused at the same node, so the caller can ask again.
+var ErrWaitInput = engine.ErrWaitInput
 
 ////////////////////////////////////////////////////////////////////////////////
 // Graph store

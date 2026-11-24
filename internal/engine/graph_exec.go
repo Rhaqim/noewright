@@ -160,6 +160,12 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 			queue = queue[1:]
 			for k, e := range g.succ[src.from] {
 				j := e.to
+				if j == g.entry {
+					// The entry runs from the start, whatever its edges do. An
+					// edge into it (a loop back through a wait node) settles
+					// without making it ready or dead a second time.
+					continue
+				}
 				resolved[j]++
 				if !e.data && src.fire != nil && src.fire[k] {
 					fired[j]++
@@ -264,6 +270,15 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 	running := 0
 	aborted := false
 	ready := []int{g.entry}
+	// A node other than the entry with no incoming edge can never be reached in
+	// this run (a resumed graph starts mid-way, so the nodes before it have no
+	// way in): it is dead from the start, and so are the edges leaving it.
+	for i := range n {
+		if i != g.entry && pred[i] == 0 {
+			res.dead = append(res.dead, i)
+			ready = append(ready, resolve(i, nil)...)
+		}
+	}
 
 	// settle handles a node's outcome on the coordinating goroutine.
 	settle := func(s settledNode) {
