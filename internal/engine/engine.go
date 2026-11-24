@@ -167,6 +167,7 @@ type Engine struct {
 	gc              *gcService
 	flows           *flowService
 	graphs          *graphService
+	bundles         *bundleService
 	poller          *asyncPollerService
 
 	onTaskResolved func(context.Context, TaskResolution)
@@ -263,6 +264,7 @@ func New(cfg Config) (*Engine, error) {
 	e.gc = &gcService{e: e}
 	e.flows = &flowService{e: e}
 	e.graphs = &graphService{e: e}
+	e.bundles = &bundleService{e: e}
 
 	if cfg.AsyncPoller.Workers > 0 {
 		e.poller = newAsyncPollerService(e, cfg.AsyncPoller)

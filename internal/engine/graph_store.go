@@ -117,19 +117,24 @@ func (s *graphService) Create(ctx context.Context, r *GraphRecord) error {
 	if r.CreatedAt.IsZero() {
 		r.CreatedAt = time.Now()
 	}
-	def, err := json.Marshal(r.Graph)
-	if err != nil {
-		return fmt.Errorf("noewright: graph %q: encode: %w", r.Slug, err)
-	}
-	if _, err := s.e.db.ExecContext(ctx, fmt.Sprintf(`
-		INSERT INTO %sgraphs (id, owner, slug, version, category, is_active, definition, created_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, s.e.prefix),
-		r.ID, r.Owner, r.Slug, r.Version, r.Category, flowBool(r.IsActive), string(def), r.CreatedAt,
-	); err != nil {
+	if err := sqlInsertGraph(ctx, s.e.db, s.e.prefix, r); err != nil {
 		return err
 	}
 	cacheDelete(ctx, s.e.cache, s.e.cacheKeyOwnedLatest("graph-active", r.Owner, r.Slug))
 	return nil
+}
+
+// sqlInsertGraph writes one graph record with ex (a DB or a transaction).
+func sqlInsertGraph(ctx context.Context, ex execer, prefix string, r *GraphRecord) error {
+	def, err := json.Marshal(r.Graph)
+	if err != nil {
+		return fmt.Errorf("noewright: graph %q: encode: %w", r.Slug, err)
+	}
+	_, err = ex.ExecContext(ctx, fmt.Sprintf(`
+		INSERT INTO %sgraphs (id, owner, slug, version, category, is_active, definition, created_at)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, prefix),
+		r.ID, r.Owner, r.Slug, r.Version, r.Category, flowBool(r.IsActive), string(def), r.CreatedAt)
+	return err
 }
 
 const graphColumns = `id, owner, slug, version, category, is_active, definition, created_at`

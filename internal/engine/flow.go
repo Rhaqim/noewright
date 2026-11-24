@@ -29,36 +29,36 @@ import (
 // FlowAgent is one agent participating in a turn.
 type FlowAgent struct {
 	// AgentSlug + AgentVersion address a registered agent (version 0 = latest).
-	AgentSlug    string
-	AgentVersion int
+	AgentSlug    string `json:"agent,omitempty" yaml:"agent,omitempty"`
+	AgentVersion int    `json:"version,omitempty" yaml:"version,omitempty"`
 	// Stream, on the lead agent only, routes streaming chunks to TurnRequest.OnChunk.
-	Stream bool
+	Stream bool `json:"stream,omitempty" yaml:"stream,omitempty"`
 	// OutputKey is the key under which this agent's text output is exposed to
 	// later agents in the same turn via {{.Inputs.<OutputKey>}}. For the lead it
 	// defaults to "Lead"; for followers it is optional.
-	OutputKey string
+	OutputKey string `json:"output,omitempty" yaml:"output,omitempty"`
 	// Overrides is opaque per-call data forwarded to the generator (e.g. a
 	// per-user api key / model). Optional.
-	Overrides map[string]any
+	Overrides map[string]any `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	// GeneratorOverride routes this agent's call to a different registered
 	// generator for this turn only. Optional.
-	GeneratorOverride string
+	GeneratorOverride string `json:"generator_override,omitempty" yaml:"generator_override,omitempty"`
 	// Params are this agent's tuning knobs (model + domain), merged over the
 	// turn's Params. See StepRequest.Params.
-	Params map[string]any
+	Params map[string]any `json:"params,omitempty" yaml:"params,omitempty"`
 	// RetryMode and MaxRetries override the engine retry defaults for this
 	// agent's step (e.g. a keep-best lead, a discard follower). Zero values
 	// inherit the engine default.
-	RetryMode  RetryMode
-	MaxRetries int
+	RetryMode  RetryMode `json:"retry_mode,omitempty" yaml:"retry_mode,omitempty"`
+	MaxRetries int       `json:"max_retries,omitempty" yaml:"max_retries,omitempty"`
 	// SystemPrompt, when non-zero, is this agent's per-turn system prompt
 	// override (typically PromptRef{Literal: ...} assembled by the embedder).
 	// The zero value leaves the agent's registered system prompt in place.
-	SystemPrompt PromptRef
+	SystemPrompt PromptRef `json:"system_prompt,omitzero" yaml:"system_prompt,omitempty"`
 	// Inputs are merged over the turn's shared Inputs for this agent only, so
 	// each agent can receive its own user_prompt / values while still seeing the
 	// lead's output. Nil leaves the shared Inputs untouched.
-	Inputs map[string]any
+	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
 	// When, on a FOLLOWER, decides whether this agent runs at all this turn. It
 	// is consulted after the lead settles (and, for a layered follower, after
 	// its producers), with the inputs this agent would have received. Returning
@@ -76,7 +76,7 @@ type FlowAgent struct {
 	// change shape. It is inert unless set.
 	//
 	// When is code, so it is never encoded: a saved graph or flow cannot carry it.
-	When func(ctx context.Context, g FollowerGate) (bool, error) `json:"-"`
+	When func(ctx context.Context, g FollowerGate) (bool, error) `json:"-" yaml:"-"`
 }
 
 // FollowerGate is what a FlowAgent.When gate is given to decide on. It carries

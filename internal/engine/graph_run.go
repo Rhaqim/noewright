@@ -97,6 +97,12 @@ type compiledGraph struct {
 // the check RunGraph makes before running; Graphs().Validate adds registry
 // checks on top.
 func (e *Engine) compileGraph(ctx context.Context, owner string, g Graph) (*compiledGraph, error) {
+	return e.compileGraphOpts(ctx, owner, g, false)
+}
+
+// compileGraphOpts is compileGraph with the function-registry check optional:
+// a bundle imported by the CLI names functions only the app registers.
+func (e *Engine) compileGraphOpts(ctx context.Context, owner string, g Graph, skipFuncs bool) (*compiledGraph, error) {
 	bad := func(format string, args ...any) error {
 		return fmt.Errorf("%w: %s", ErrInvalidGraph, fmt.Sprintf(format, args...))
 	}
@@ -133,7 +139,7 @@ func (e *Engine) compileGraph(ctx context.Context, owner string, g Graph) (*comp
 			if nd.Func == "" {
 				return nil, bad("func node %q names no function", nd.ID)
 			}
-			if _, ok := e.lookupFunc(nd.Func); !ok {
+			if _, ok := e.lookupFunc(nd.Func); !ok && !skipFuncs {
 				return nil, bad("func node %q: no function registered as %q", nd.ID, nd.Func)
 			}
 			c.output[i] = nd.OutputKey

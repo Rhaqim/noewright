@@ -45,19 +45,19 @@ const (
 // firing it or never ran. So a node several branches lead to waits for the
 // branches that actually started in this run, and no longer.
 type Graph struct {
-	Slug  string
-	Entry string // id of the entry node
+	Slug  string `json:"slug,omitempty" yaml:"slug,omitempty"`
+	Entry string `json:"entry,omitempty" yaml:"entry,omitempty"` // id of the entry node
 	// Inputs names the inputs a caller supplies at run time (GraphRequest.Inputs),
 	// as opposed to outputs produced inside the graph. "action" is always
 	// available. Validate treats these as satisfied.
-	Inputs []string
+	Inputs []string `json:"inputs,omitempty" yaml:"inputs,omitempty"`
 	// Vars declares how a session var written by more than one node is combined.
 	// A var with no entry is replaced by the last write. Validate refuses a
 	// graph where two nodes that can run in parallel Save the same undeclared
 	// var.
-	Vars  map[string]GraphVar
-	Nodes []GraphNode
-	Edges []GraphEdge
+	Vars  map[string]GraphVar `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Nodes []GraphNode         `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+	Edges []GraphEdge         `json:"edges,omitempty" yaml:"edges,omitempty"`
 }
 
 // Reducer combines a new value into a session var.
@@ -76,62 +76,62 @@ const (
 
 // GraphVar declares a session var's reducer.
 type GraphVar struct {
-	Reducer Reducer
+	Reducer Reducer `json:"reducer,omitempty" yaml:"reducer,omitempty"`
 }
 
 // GraphNode is one node of a Graph. Set the fields for its Kind.
 type GraphNode struct {
-	ID   string
-	Kind GraphNodeKind
+	ID   string        `json:"id,omitempty" yaml:"id,omitempty"`
+	Kind GraphNodeKind `json:"kind,omitempty" yaml:"kind,omitempty"`
 
 	// Agent configures a NodeAgent: the agent, its output key, whether it
 	// streams, its params, overrides, retry policy and own inputs, exactly as
 	// for a turn's agents. Agent.When is not used in graphs; route with edge
 	// conditions instead.
-	Agent *FlowAgent
+	Agent *FlowAgent `json:"agent,omitempty" yaml:"agent,omitempty"`
 
 	// Func names the registered function a NodeFunc calls.
-	Func string
+	Func string `json:"func,omitempty" yaml:"func,omitempty"`
 	// Record, on a NodeFunc, saves the function's output as a step attributed
 	// to this agent slug (Owner-scoped, latest version), the way RecordStep
 	// does. Empty records no step.
-	Record string
+	Record string `json:"record,omitempty" yaml:"record,omitempty"`
 
 	// Decide configures a NodeDecide.
-	Decide *GraphDecision
+	Decide *GraphDecision `json:"decide,omitempty" yaml:"decide,omitempty"`
 
 	// Wait configures a NodeWait.
-	Wait *GraphWait
+	Wait *GraphWait `json:"wait,omitempty" yaml:"wait,omitempty"`
 
 	// MaxVisits caps how many times the node may run in one session's use of
 	// the graph (across resumed runs). 0 = no cap. A node over its cap fails.
-	MaxVisits int
+	MaxVisits int `json:"max_visits,omitempty" yaml:"max_visits,omitempty"`
 
 	// OutputKey names the input a NodeFunc or NodeDecide output is exposed under
 	// to later nodes. A NodeAgent uses Agent.OutputKey.
-	OutputKey string
+	OutputKey string `json:"output,omitempty" yaml:"output,omitempty"`
 
 	// Save assigns session vars from expressions once the node succeeds:
 	// var name → expression. The value is combined through the var's reducer.
-	Save map[string]string
+	Save map[string]string `json:"save,omitempty" yaml:"save,omitempty"`
 
 	// Required makes a failure of this node fail the whole run. Otherwise a
 	// failure ends the node's own branch, unless an OnError edge leaves it or
 	// Continue is set.
-	Required bool
+	Required bool `json:"required,omitempty" yaml:"required,omitempty"`
 	// Continue evaluates the node's ordinary edges even when it fails, so its
 	// consumers still run and see its output missing.
-	Continue bool
+	Continue bool `json:"continue,omitempty" yaml:"continue,omitempty"`
 }
 
 // GraphDecision is the question a NodeDecide asks.
 type GraphDecision struct {
 	// Question is an Evaluator question, built with EvalChoice, EvalNoul or
 	// EvalScore. It is asked under the node's ID.
-	Question EvalQuestion
+	Question EvalQuestion `json:"question,omitempty" yaml:"question,omitempty"`
 	// Over names the input whose text is evaluated, usually an earlier node's
 	// output key. Empty evaluates the action text.
-	Over string
+	Over string `json:"over,omitempty" yaml:"over,omitempty"`
 }
 
 // WaitExpect says what input a NodeWait accepts.
@@ -150,15 +150,15 @@ const (
 
 // GraphWait configures a NodeWait.
 type GraphWait struct {
-	Expect  WaitExpect // "" = ExpectAny
-	Options []string   // for ExpectChoice
-	Pattern string     // regular expression free text must match (ExpectText)
+	Expect  WaitExpect `json:"expect,omitempty" yaml:"expect,omitempty"`   // "" = ExpectAny
+	Options []string   `json:"options,omitempty" yaml:"options,omitempty"` // for ExpectChoice
+	Pattern string     `json:"pattern,omitempty" yaml:"pattern,omitempty"` // regular expression free text must match (ExpectText)
 	// Prompt is shown to whoever the run waits for; RunGraph returns it on
 	// GraphRun.Prompt. It is a hint for the caller's UI, not sent to any model.
-	Prompt string
+	Prompt string `json:"prompt,omitempty" yaml:"prompt,omitempty"`
 	// Record, when set, saves the person's input as a step attributed to this
 	// agent slug, with the Action recorded on it — a human-written turn.
-	Record string
+	Record string `json:"record,omitempty" yaml:"record,omitempty"`
 }
 
 // GraphCursor is where a session stands in a graph between runs: the wait
@@ -179,22 +179,22 @@ type GraphCursor struct {
 // once. Default fires when no other edge from the node did. When an Uncertain
 // edge fires, the node's Route edges do not.
 type GraphEdge struct {
-	From string
-	To   []string
+	From string   `json:"from,omitempty" yaml:"from,omitempty"`
+	To   []string `json:"to,omitempty" yaml:"to,omitempty"`
 	// Route fires when the node's route value equals it. A NodeDecide emits the
 	// chosen option (Choice), "yes" or "no" (Noul), or the level index (Score);
 	// a NodeFunc emits FuncResult.Route.
-	Route string
+	Route string `json:"route,omitempty" yaml:"route,omitempty"`
 	// When fires when the expression is true. See the expression environment
 	// on GraphRun.
-	When string
+	When string `json:"when,omitempty" yaml:"when,omitempty"`
 	// Uncertain, on an edge from a NodeDecide, fires when the answer's
 	// certainty is below this value (0..1).
-	Uncertain float64
+	Uncertain float64 `json:"uncertain,omitempty" yaml:"uncertain,omitempty"`
 	// Default fires when no other edge from the node fired.
-	Default bool
+	Default bool `json:"default,omitempty" yaml:"default,omitempty"`
 	// OnError fires when the node failed.
-	OnError bool
+	OnError bool `json:"on_error,omitempty" yaml:"on_error,omitempty"`
 }
 
 // GraphFunc is a Go function a NodeFunc calls. It must be safe to call

@@ -16,25 +16,25 @@ type TaskHandle struct {
 
 // GenerateParams holds per-call tuning knobs for the generator.
 type GenerateParams struct {
-	Temperature      float64
-	MaxTokens        int
-	TopP             float64
-	FrequencyPenalty float64
-	PresencePenalty  float64
-	Seed             int
+	Temperature      float64 `yaml:"temperature,omitempty"`
+	MaxTokens        int     `yaml:"max_tokens,omitempty"`
+	TopP             float64 `yaml:"top_p,omitempty"`
+	FrequencyPenalty float64 `yaml:"frequency_penalty,omitempty"`
+	PresencePenalty  float64 `yaml:"presence_penalty,omitempty"`
+	Seed             int     `yaml:"seed,omitempty"`
 	// Image / video / 3D-asset specific. Providers may use Extra for their
 	// native settings such as mesh resolution, style, rigging, or topology.
-	Width       int
-	Height      int
-	DurationSec float64
+	Width       int     `yaml:"width,omitempty"`
+	Height      int     `yaml:"height,omitempty"`
+	DurationSec float64 `yaml:"duration_sec,omitempty"`
 	// Extra provider-specific params (merged last)
-	Extra map[string]any
+	Extra map[string]any `yaml:"extra,omitempty"`
 }
 
 // ResponseFormat describes the expected JSON schema for structured output.
 type ResponseFormat struct {
-	Schema     map[string]any // JSON Schema
-	StrictMode bool
+	Schema     map[string]any `yaml:"schema,omitempty"` // JSON Schema
+	StrictMode bool           `yaml:"strict,omitempty"`
 }
 
 // GenerateRequest is the input to a Generator.

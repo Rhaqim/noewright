@@ -17,7 +17,7 @@ const agentColumns = `id, slug, version, category, modality, generator_slug,
 	system_prompt_id, user_template_id, response_format_id, response_format, params,
 	fallback_agent_id, created_at, owner`
 
-func sqlInsertAgent(ctx context.Context, db *sql.DB, prefix string, a *Agent) error {
+func sqlInsertAgent(ctx context.Context, db execer, prefix string, a *Agent) error {
 	rfJSON, _ := json.Marshal(a.ResponseFormat)
 	paramsJSON, _ := json.Marshal(a.Params)
 	var fallbackID *string

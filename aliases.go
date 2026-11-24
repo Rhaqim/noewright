@@ -1036,6 +1036,91 @@ const GenerationEmpty = engine.GenerationEmpty
 type GenerationError = engine.GenerationError
 
 ////////////////////////////////////////////////////////////////////////////////
+// Bundle
+////////////////////////////////////////////////////////////////////////////////
+
+// BundleFormat is the format version this engine writes and reads.
+const BundleFormat = engine.BundleFormat
+
+// ErrInvalidBundle is returned for a bundle that cannot be read or imported as
+// written: an unknown format, a digest that does not match, a reference to a
+// record the bundle does not contain, or a record that fails its own checks.
+var ErrInvalidBundle = engine.ErrInvalidBundle
+
+// ErrBundleConflict is returned by Import when the target already holds a
+// record under the same slug and version with different content, and the
+// import's OnConflict is ConflictFail. Nothing is written.
+var ErrBundleConflict = engine.ErrBundleConflict
+
+// Bundle is a portable configuration. Marshal writes it as YAML; ParseBundle
+// reads YAML or JSON.
+type Bundle = engine.Bundle
+
+// BundleRequires is what the importing system must provide.
+type BundleRequires = engine.BundleRequires
+
+// BundleGenerator names a generator a bundle's agents use.
+type BundleGenerator = engine.BundleGenerator
+
+// BundlePrompt is a prompt record.
+type BundlePrompt = engine.BundlePrompt
+
+// BundleResponseFormat is a saved response-format record.
+type BundleResponseFormat = engine.BundleResponseFormat
+
+// BundleAgent is an agent record. Prompt, format and fallback references are
+// "slug@version".
+type BundleAgent = engine.BundleAgent
+
+// BundleFlow is a flow record.
+type BundleFlow = engine.BundleFlow
+
+// BundleFlowAgent is one agent slot in a flow; the first is the lead.
+type BundleFlowAgent = engine.BundleFlowAgent
+
+// BundleGraph is a graph record.
+type BundleGraph = engine.BundleGraph
+
+// BundleRoot names a record Export starts from. Kind is "graph", "flow" or
+// "agent"; Version 0 is the latest active graph or flow, or the latest agent.
+type BundleRoot = engine.BundleRoot
+
+// ConflictPolicy says what Import does when the target holds a different
+// record under the same slug and version.
+type ConflictPolicy = engine.ConflictPolicy
+
+// ConflictFail stops the import; nothing is written. The default.
+const ConflictFail = engine.ConflictFail
+
+// ConflictBump imports the record as the next free version and updates the
+// bundle's references to it.
+const ConflictBump = engine.ConflictBump
+
+// ImportOptions control an import.
+type ImportOptions = engine.ImportOptions
+
+// ImportOutcome is what happened to one record.
+type ImportOutcome = engine.ImportOutcome
+
+const ImportCreate = engine.ImportCreate
+
+const ImportSkip = engine.ImportSkip
+
+const ImportConflict = engine.ImportConflict
+
+const ImportBump = engine.ImportBump
+
+// ImportItem is one record's line in an import report.
+type ImportItem = engine.ImportItem
+
+// ImportReport is what Import planned and, unless it was a dry run or failed,
+// wrote.
+type ImportReport = engine.ImportReport
+
+// BundleRegistry exports and imports bundles.
+type BundleRegistry = engine.BundleRegistry
+
+////////////////////////////////////////////////////////////////////////////////
 // Graph
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -1170,6 +1255,14 @@ type GraphHop = engine.GraphHop
 //	visits   node id → how many times it has run in this session's use of
 //	         the graph, resumed runs included
 type GraphRun = engine.GraphRun
+
+////////////////////////////////////////////////////////////////////////////////
+// Bundle
+////////////////////////////////////////////////////////////////////////////////
+
+// ParseBundle reads a bundle from YAML or JSON, checks its format version, and
+// checks its digest when it has one.
+var ParseBundle = engine.ParseBundle
 
 ////////////////////////////////////////////////////////////////////////////////
 // Graph run

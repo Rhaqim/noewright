@@ -562,7 +562,15 @@ func sqlInsertFlow(ctx context.Context, db *sql.DB, prefix string, r *FlowRecord
 		return err
 	}
 	defer tx.Rollback()
+	if err := sqlInsertFlowRows(ctx, tx, prefix, r); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
 
+// sqlInsertFlowRows writes a flow and its agent entries with ex, which the
+// caller runs inside a transaction (a bundle import writes many records in one).
+func sqlInsertFlowRows(ctx context.Context, tx execer, prefix string, r *FlowRecord) error {
 	inputsJSON, _ := json.Marshal(r.Inputs)
 	if len(inputsJSON) == 0 || string(inputsJSON) == "null" {
 		inputsJSON = []byte("[]")
@@ -590,7 +598,7 @@ func sqlInsertFlow(ctx context.Context, db *sql.DB, prefix string, r *FlowRecord
 			return err
 		}
 	}
-	return tx.Commit()
+	return nil
 }
 
 func sqlQueryFlow(ctx context.Context, db *sql.DB, prefix, owner, slug string, version int) (*FlowRecord, error) {
