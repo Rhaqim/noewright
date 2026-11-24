@@ -1,6 +1,9 @@
-# Noewright
-
-*The runtime for programmable intelligence.*
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme-header-dark.svg">
+    <img alt="noewright: the runtime for programmable intelligence" src="docs/assets/readme-header-light.svg" width="720">
+  </picture>
+</p>
 
 A modality-agnostic engine for orchestrating multi-agent AI applications.
 
