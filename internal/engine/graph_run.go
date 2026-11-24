@@ -3,6 +3,7 @@ package engine
 // graph_run.go — RunGraph: compiles a Graph onto the shared executor.
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -696,8 +697,9 @@ func (e *Engine) graphNodeWork(session *Session, req GraphRequest, c *compiledGr
 			}
 			e.mu.Lock()
 			vars := maps.Clone(session.State.Vars)
+			snapshot := bytes.Clone(session.State.Snapshot)
 			e.mu.Unlock()
-			fr, err := fn(ctx, FuncCall{Node: nd.ID, Inputs: in, Vars: vars, Session: session})
+			fr, err := fn(ctx, FuncCall{Node: nd.ID, Inputs: in, Vars: vars, Snapshot: snapshot, Session: session})
 			if err != nil {
 				return nil, fmt.Errorf("noewright: function %q: %w", nd.Func, err)
 			}

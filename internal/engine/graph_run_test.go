@@ -270,7 +270,11 @@ func TestRunGraph_SavesAndReducers(t *testing.T) {
 	mkGenAgent(t, e, "lead", "echo", "L", nil)
 	mkGenAgent(t, e, "x", "echo", "X", nil)
 	mkGenAgent(t, e, "y", "echo", "Y", nil)
-	e.RegisterFunc("score", func(context.Context, FuncCall) (FuncResult, error) {
+	e.RegisterFunc("score", func(_ context.Context, c FuncCall) (FuncResult, error) {
+		if string(c.Snapshot) != `{"sheet":1}` {
+			return FuncResult{}, fmt.Errorf("snapshot = %q", c.Snapshot)
+		}
+		c.Snapshot[0] = 'X' // a copy: changing it must not touch the session
 		return FuncResult{Text: "scored", Data: map[string]any{"points": 5}, Vars: map[string]any{"total": 5}}, nil
 	})
 	g := Graph{Slug: "s", Entry: "lead",
@@ -284,8 +288,13 @@ func TestRunGraph_SavesAndReducers(t *testing.T) {
 		Edges: []GraphEdge{{From: "lead", To: to("x", "y")}, {From: "x", To: to("score")}, {From: "y", To: to("score")}},
 	}
 	s := newSession(t, e, map[string]any{"total": 1})
-	if _, err := e.RunGraph(ctx, s, GraphRequest{Graph: g}); err != nil {
+	s.State.Snapshot = []byte(`{"sheet":1}`)
+	run, err := e.RunGraph(ctx, s, GraphRequest{Graph: g})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if run.Errors["score"] != nil || string(s.State.Snapshot) != `{"sheet":1}` {
+		t.Fatalf("score error %v, session snapshot %q", run.Errors["score"], s.State.Snapshot)
 	}
 	stored, err := e.Sessions().Get(ctx, s.ID)
 	if err != nil {

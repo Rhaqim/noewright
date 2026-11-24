@@ -206,6 +206,10 @@ type FuncCall struct {
 	Node   string         // the node being run
 	Inputs map[string]any // this node's own copy of the run inputs
 	Vars   map[string]any // a snapshot of the session vars
+	// Snapshot is a copy of the session's opaque application state
+	// (State.Snapshot), taken when the function starts — where an app keeps
+	// its own state, such as a game's character sheets.
+	Snapshot []byte
 	// Session is the session the run belongs to. Treat it as read-only; change
 	// vars through FuncResult.Vars so reducers apply.
 	Session *Session
