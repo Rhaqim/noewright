@@ -299,6 +299,33 @@ next free version and rewrites the bundle's references to it. Everything is
 written in one transaction. `noewright.BundleSchema()` returns the JSON Schema
 for the file.
 
+### Tests and evidence in a bundle
+
+A bundle can carry `tests`: scripted runs of its graphs, one `RunGraph` call per
+step, each checked against `expect` (`waiting: <node>` or `waiting: done`,
+`ran`, `skipped`, `contains`, `max_length`, `no_errors`).
+
+```yaml
+tests:
+  - name: refund happy path
+    graph: support@1
+    steps:
+      - {say: "money back", expect: {waiting: confirm, ran: [intake, intent]}}
+      - {select: "yes", expect: {waiting: done, contains: {refund: "REFUND"}, no_errors: true}}
+```
+
+Run them in your app, where the real generators and functions are registered:
+`results, _ := e.Bundles().Test(ctx, b, noewright.BundleTestOptions{Owner: owner})`.
+`b.SetEvidence(results)` stores the results (pass/fail, failures, cost, a hash
+of each node's output) as `evidence`, which the digest does not cover. On a
+re-run, `results[i].Changed` lists outputs whose hash differs from the evidence:
+reported, not failed, because model output varies. `GraphRun.Ran` lists every
+node that ran in a call, functions and decisions included.
+
+`noewright test bundle.yaml` runs a bundle's tests offline against the echo
+generator (routing, waits and templates, at no cost); bundles that need app
+functions or an Evaluator must use `Bundles().Test` instead.
+
 CLI: `noewright export graph:support flow:triage-turn@2 -o support.yaml`,
 `noewright import support.yaml --owner tenant-7 --map g=openai-mini --dry-run`,
 `noewright verify support.yaml` (no database needed), `noewright schema`.

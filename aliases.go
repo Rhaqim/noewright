@@ -1081,6 +1081,26 @@ type BundleFlowAgent = engine.BundleFlowAgent
 // BundleGraph is a graph record.
 type BundleGraph = engine.BundleGraph
 
+// BundleTest is a scripted run of one graph: a fresh session, then one
+// RunGraph call per step, each checked against its expectations.
+type BundleTest = engine.BundleTest
+
+// BundleTestStep is one call in a test. Say sends free text; Select picks an
+// option of a choice wait; neither sends no action.
+type BundleTestStep = engine.BundleTestStep
+
+// BundleExpect is what a step must produce. Empty fields are not checked.
+type BundleExpect = engine.BundleExpect
+
+// BundleEvidence is one test's result where the bundle was made.
+type BundleEvidence = engine.BundleEvidence
+
+// BundleTestOptions control Bundles().Test.
+type BundleTestOptions = engine.BundleTestOptions
+
+// BundleTestResult is one test's outcome.
+type BundleTestResult = engine.BundleTestResult
+
 // BundleRoot names a record Export starts from. Kind is "graph", "flow" or
 // "agent"; Version 0 is the latest active graph or flow, or the latest agent.
 type BundleRoot = engine.BundleRoot

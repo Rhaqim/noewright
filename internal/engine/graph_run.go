@@ -509,6 +509,9 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 	for _, ce := range res.errs {
 		run.Errors[g.Nodes[ce.node].ID] = ce.err
 	}
+	for _, i := range res.ran {
+		run.Ran = append(run.Ran, g.Nodes[i].ID)
+	}
 	gs.mu.Lock()
 	for k, err := range gs.edgeErrs {
 		if _, taken := run.Errors[k]; !taken {

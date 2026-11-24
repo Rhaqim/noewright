@@ -201,6 +201,75 @@ func importCmd() *cobra.Command {
 	return cmd
 }
 
+// isBundleFile reports whether path holds a bundle rather than a test plan.
+func isBundleFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	head := make([]byte, 4096)
+	n, _ := io.ReadFull(f, head)
+	return strings.Contains(string(head[:n]), "noewright: bundle/")
+}
+
+// testBundle runs a bundle's tests offline against the echo generator.
+func testBundle(cmd *cobra.Command, path string) error {
+	b, err := readBundle(path)
+	if err != nil {
+		return err
+	}
+	if len(b.Tests) == 0 {
+		return fmt.Errorf("%s has no tests", path)
+	}
+	if len(b.Requires.Funcs) > 0 || b.Requires.Evaluator {
+		return fmt.Errorf("this bundle's graphs need things only your app has (functions %v, evaluator %v); "+
+			"run Bundles().Test in your app instead", b.Requires.Funcs, b.Requires.Evaluator)
+	}
+	ctx := context.Background()
+	db, err := sql.Open("sqlite", "file:test_"+uuid.NewString()+"?mode=memory&cache=shared")
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	if err := schema.NewLoader(schema.DialectSQLite).Apply(ctx, db); err != nil {
+		return err
+	}
+	e, err := noewright.New(noewright.Config{DB: db, Dialect: noewright.DialectSQLite, Generators: cliGenerators()})
+	if err != nil {
+		return err
+	}
+	gens := map[string]string{}
+	for _, g := range b.Requires.Generators {
+		gens[g.Slug] = "echo"
+	}
+	if _, err := e.Bundles().Import(ctx, b, noewright.ImportOptions{Generators: gens, Activate: true}); err != nil {
+		return err
+	}
+	results, err := e.Bundles().Test(ctx, b, noewright.BundleTestOptions{})
+	if err != nil {
+		return err
+	}
+	w := cmd.OutOrStdout()
+	failed := 0
+	for _, r := range results {
+		status := "PASS"
+		if !r.Evidence.Passed {
+			status, failed = "FAIL", failed+1
+		}
+		fmt.Fprintf(w, "%s  %s\n", status, r.Evidence.Test)
+		for _, f := range r.Evidence.Failures {
+			fmt.Fprintln(w, "      ", f)
+		}
+	}
+	fmt.Fprintf(w, "%d of %d tests passed (echo generator, offline).\n", len(results)-failed, len(results))
+	if failed > 0 {
+		return fmt.Errorf("%d test(s) failed", failed)
+	}
+	return nil
+}
+
 func schemaCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "schema",

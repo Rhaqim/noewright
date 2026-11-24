@@ -333,3 +333,52 @@ func TestCLI_BundleImportExport(t *testing.T) {
 		t.Fatalf("conflicting import exited %d:\n%s", code, out)
 	}
 }
+
+// echoBundle has no functions or decisions, so its tests run offline.
+const echoBundle = `noewright: bundle/v1
+requires:
+  generators: [{slug: chat, modality: text}]
+prompts:
+  - {slug: e-ut, version: 1, kind: user_template, body: "HELLO {{.Inputs.action}}"}
+  - {slug: e-reply-ut, version: 1, kind: user_template, body: "THANKS {{.Inputs.Name}}", variables: [Name]}
+agents:
+  - {slug: e-greet, version: 1, modality: text, generator: chat, user_template: e-ut@1}
+  - {slug: e-reply, version: 1, modality: text, generator: chat, user_template: e-reply-ut@1}
+graphs:
+  - slug: e-ask
+    version: 1
+    graph:
+      entry: greet
+      nodes:
+        - {id: greet, kind: agent, agent: {agent: e-greet, version: 1}}
+        - {id: name, kind: wait, output: Name, wait: {expect: text}}
+        - {id: reply, kind: agent, agent: {agent: e-reply, version: 1}}
+      edges:
+        - {from: greet, to: [name]}
+        - {from: name, to: [reply]}
+tests:
+  - name: asks then thanks
+    graph: e-ask@1
+    steps:
+      - {say: there, expect: {waiting: name, contains: {greet: "HELLO there"}}}
+      - {say: Ada, expect: {waiting: done, contains: {reply: "THANKS Ada"}, no_errors: true}}
+  - name: wrong on purpose
+    graph: e-ask@1
+    steps:
+      - {say: there, expect: {waiting: done}}
+`
+
+func TestCLI_BundleTestOffline(t *testing.T) {
+	out, code := run(t, "test", writeTempFile(t, "bundle-tests-*.yaml", echoBundle))
+	if code == 0 {
+		t.Fatalf("a failing test should exit non-zero:\n%s", out)
+	}
+	for _, want := range []string{"PASS  asks then thanks", "FAIL  wrong on purpose", `waits at "name"`, "1 of 2 tests passed"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if out, code := run(t, "test", writeTempFile(t, "bundle-func-*.yaml", handBundle+"tests: [{name: x, graph: cli-support@1, steps: [{}]}]\n")); code == 0 || !strings.Contains(out, "Bundles().Test") {
+		t.Fatalf("a bundle needing app functions exited %d:\n%s", code, out)
+	}
+}

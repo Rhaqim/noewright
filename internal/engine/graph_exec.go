@@ -31,6 +31,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 )
 
@@ -106,6 +107,7 @@ type execResult struct {
 	errs      []execError // in the order they were recorded
 	skipped   []int       // gated-out nodes, in completion order
 	dead      []int       // nodes never activated, in the order found dead
+	ran       []int       // nodes that ran (succeeded or failed), in completion order
 	abort     error       // set when a required node failed
 	abortNode int
 }
@@ -207,11 +209,14 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 					return
 				}
 				perr := node.onPanic(r)
+				mu.Lock()
 				if !succeeded {
-					mu.Lock()
 					res.errs = append(res.errs, execError{i, perr})
-					mu.Unlock()
 				}
+				if !slices.Contains(res.ran, i) {
+					res.ran = append(res.ran, i)
+				}
+				mu.Unlock()
 				if node.settled != nil && !settledCalled {
 					node.settled(nil, perr)
 				}
@@ -243,6 +248,7 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 		out, err := node.run(ctx, in)
 		succeeded = outSucceeded(out, err)
 		mu.Lock()
+		res.ran = append(res.ran, i)
 		if err != nil {
 			res.errs = append(res.errs, execError{i, err})
 		}

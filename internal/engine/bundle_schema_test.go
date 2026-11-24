@@ -42,6 +42,7 @@ func TestBundleSchemaMatchesTypes(t *testing.T) {
 		{BundleFlow{}, "flow"}, {BundleFlowAgent{}, "flow_agent"}, {BundleGraph{}, "graph_record"},
 		{Graph{}, "graph"}, {GraphVar{}, "graph_var"}, {GraphNode{}, "node"}, {FlowAgent{}, "node_agent"},
 		{GraphDecision{}, "decide"}, {GraphWait{}, "wait"}, {GraphEdge{}, "edge"},
+		{BundleTest{}, "test"}, {BundleTestStep{}, "test_step"}, {BundleExpect{}, "expect"}, {BundleEvidence{}, "evidence"},
 	}
 	for _, c := range cases {
 		var have map[string]any

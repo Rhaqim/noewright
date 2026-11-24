@@ -42,8 +42,15 @@ type Bundle struct {
 	Agents          []BundleAgent          `json:"agents,omitempty" yaml:"agents,omitempty"`
 	Flows           []BundleFlow           `json:"flows,omitempty" yaml:"flows,omitempty"`
 	Graphs          []BundleGraph          `json:"graphs,omitempty" yaml:"graphs,omitempty"`
+	// Tests are scripted runs of the bundle's graphs, run with Bundles().Test.
+	Tests []BundleTest `json:"tests,omitempty" yaml:"tests,omitempty"`
+	// Evidence is what the tests produced the last time they ran where the
+	// bundle was made. It is not part of the digest, so recording it does not
+	// make the file look edited.
+	Evidence []BundleEvidence `json:"evidence,omitempty" yaml:"evidence,omitempty"`
 
-	// Digest is "sha256:<hex>" over the canonical JSON of every field above.
+	// Digest is "sha256:<hex>" over the canonical JSON of every field above
+	// except Evidence.
 	// ParseBundle refuses a bundle whose digest does not match; an empty digest
 	// (a hand-written file) is accepted.
 	Digest string `json:"digest,omitempty" yaml:"digest,omitempty"`
@@ -135,6 +142,75 @@ type BundleGraph struct {
 	Graph    Graph  `json:"graph" yaml:"graph"`
 }
 
+// BundleTest is a scripted run of one graph: a fresh session, then one
+// RunGraph call per step, each checked against its expectations.
+type BundleTest struct {
+	Name  string `json:"name" yaml:"name"`
+	Graph string `json:"graph" yaml:"graph"` // slug@version
+	// Vars seed the session's vars; Inputs are given to every call.
+	Vars   map[string]any   `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Inputs map[string]any   `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Steps  []BundleTestStep `json:"steps" yaml:"steps"`
+}
+
+// BundleTestStep is one call in a test. Say sends free text; Select picks an
+// option of a choice wait; neither sends no action.
+type BundleTestStep struct {
+	Say    string         `json:"say,omitempty" yaml:"say,omitempty"`
+	Select string         `json:"select,omitempty" yaml:"select,omitempty"`
+	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Expect BundleExpect   `json:"expect,omitzero" yaml:"expect,omitempty"`
+}
+
+// BundleExpect is what a step must produce. Empty fields are not checked.
+type BundleExpect struct {
+	// Waiting is the wait node the run must stop at; "done" means it must
+	// finish without waiting.
+	Waiting string `json:"waiting,omitempty" yaml:"waiting,omitempty"`
+	// Ran and Skipped list nodes that must have run, or must not have.
+	Ran     []string `json:"ran,omitempty" yaml:"ran,omitempty"`
+	Skipped []string `json:"skipped,omitempty" yaml:"skipped,omitempty"`
+	// Contains maps a node to text its output must contain.
+	Contains map[string]string `json:"contains,omitempty" yaml:"contains,omitempty"`
+	// MaxLength maps a node to the longest its output may be, in characters.
+	MaxLength map[string]int `json:"max_length,omitempty" yaml:"max_length,omitempty"`
+	// NoErrors requires the run to record no node errors.
+	NoErrors bool `json:"no_errors,omitempty" yaml:"no_errors,omitempty"`
+}
+
+// BundleEvidence is one test's result where the bundle was made.
+type BundleEvidence struct {
+	Test     string   `json:"test" yaml:"test"`
+	Passed   bool     `json:"passed" yaml:"passed"`
+	At       string   `json:"at,omitempty" yaml:"at,omitempty"`
+	Failures []string `json:"failures,omitempty" yaml:"failures,omitempty"`
+	USD      float64  `json:"usd,omitempty" yaml:"usd,omitempty"`
+	Priced   bool     `json:"priced,omitempty" yaml:"priced,omitempty"`
+	// Outputs maps "step<n>.<node>" to the sha256 of that node's output, so a
+	// re-run can say which outputs changed.
+	Outputs map[string]string `json:"outputs,omitempty" yaml:"outputs,omitempty"`
+}
+
+// BundleTestOptions control Bundles().Test.
+type BundleTestOptions struct {
+	// Owner is where the bundle's graphs were imported.
+	Owner string
+	// Only runs the tests with these names; empty runs all.
+	Only []string
+	// Overrides and Params are passed to every run (per-run API keys and the
+	// like, which bundles never carry).
+	Overrides map[string]any
+	Params    map[string]any
+}
+
+// BundleTestResult is one test's outcome.
+type BundleTestResult struct {
+	Evidence BundleEvidence
+	// Changed lists outputs whose hash differs from the bundle's evidence for
+	// this test. Model output varies, so a change is reported, not failed.
+	Changed []string
+}
+
 // BundleRoot names a record Export starts from. Kind is "graph", "flow" or
 // "agent"; Version 0 is the latest active graph or flow, or the latest agent.
 type BundleRoot struct {
@@ -216,4 +292,8 @@ type BundleRegistry interface {
 	// generators and functions, an Evaluator a graph needs, and graphs that
 	// would not run. Empty means ready.
 	Verify(ctx context.Context, b *Bundle, opts ImportOptions) []string
+	// Test runs the bundle's tests against its graphs as imported in
+	// opts.Owner, each in a fresh session, and compares the outputs with the
+	// bundle's evidence. Store the results on the bundle with SetEvidence.
+	Test(ctx context.Context, b *Bundle, opts BundleTestOptions) ([]BundleTestResult, error)
 }

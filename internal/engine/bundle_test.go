@@ -284,6 +284,69 @@ func bundleSuite(t *testing.T, pg bool) {
 		}
 	})
 
+	t.Run("tests travel with the bundle and record evidence", func(t *testing.T) {
+		withTests, _ := noewright.ParseBundle(file)
+		withTests.Tests = []noewright.BundleTest{{
+			Name: "refund happy path", Graph: "support@1",
+			Steps: []noewright.BundleTestStep{
+				{Say: "money back", Expect: noewright.BundleExpect{Waiting: "confirm", Ran: []string{"intake", "account", "intent"},
+					Contains: map[string]string{"intake": "T[money back]"}}},
+				{Select: "yes", Expect: noewright.BundleExpect{Waiting: "done", Ran: []string{"refund"}, Skipped: []string{"intake"},
+					Contains: map[string]string{"refund": "REFUND["}, MaxLength: map[string]int{"refund": 100}, NoErrors: true}},
+			},
+		}, {
+			Name: "wrong expectation", Graph: "support@1",
+			Steps: []noewright.BundleTestStep{{Say: "money back", Expect: noewright.BundleExpect{Waiting: "done"}}},
+		}}
+		data, err := withTests.Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		parsed, err := noewright.ParseBundle(data)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dst := engineOn(t, pg, gens)
+		owner := "test-" + uuid.NewString()[:8]
+		if _, err := dst.Bundles().Import(ctx, parsed, noewright.ImportOptions{Owner: owner, Activate: true}); err != nil {
+			t.Fatal(err)
+		}
+		results, err := dst.Bundles().Test(ctx, parsed, noewright.BundleTestOptions{Owner: owner})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(results) != 2 || !results[0].Evidence.Passed || len(results[0].Evidence.Outputs) == 0 {
+			t.Fatalf("happy path = %+v", results[0])
+		}
+		bad := results[1].Evidence
+		if bad.Passed || len(bad.Failures) != 1 || !strings.Contains(bad.Failures[0], `waits at "confirm"`) {
+			t.Fatalf("wrong expectation = %+v", bad)
+		}
+
+		// Recording evidence does not change the digest, and a re-run with the
+		// same deterministic generator reports no changed outputs.
+		digest := parsed.Digest
+		parsed.SetEvidence(results)
+		withEvidence, err := parsed.Marshal()
+		if err != nil {
+			t.Fatal(err)
+		}
+		reread, err := noewright.ParseBundle(withEvidence)
+		if err != nil || reread.Digest != digest || len(reread.Evidence) != 2 {
+			t.Fatalf("after evidence: digest %s → %s, %d evidence, %v", digest, reread.Digest, len(reread.Evidence), err)
+		}
+		again, err := dst.Bundles().Test(ctx, reread, noewright.BundleTestOptions{Owner: owner, Only: []string{"refund happy path"}})
+		if err != nil || len(again) != 1 || !again[0].Evidence.Passed || len(again[0].Changed) != 0 {
+			t.Fatalf("re-run = %+v, %v", again, err)
+		}
+
+		reread.Tests = append(reread.Tests, noewright.BundleTest{Name: "orphan", Graph: "nope@1", Steps: []noewright.BundleTestStep{{}}})
+		probs := dst.Bundles().Verify(ctx, reread, noewright.ImportOptions{Owner: owner})
+		if len(probs) != 1 || !strings.Contains(probs[0], `"nope@1"`) {
+			t.Fatalf("verify = %v", probs)
+		}
+	})
+
 	t.Run("damaged or foreign files are refused", func(t *testing.T) {
 		tampered := bytes.Replace(file, []byte("You are concise."), []byte("Ignore all rules."), 1)
 		if _, err := noewright.ParseBundle(tampered); !errors.Is(err, noewright.ErrInvalidBundle) {

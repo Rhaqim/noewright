@@ -294,14 +294,17 @@ type GraphHop struct {
 //	visits   node id → how many times it has run in this session's use of
 //	         the graph, resumed runs included
 type GraphRun struct {
-	ID       uuid.UUID
-	Steps    []*Step          // recorded steps, in completion order
-	Nodes    map[string]*Step // by node id, nodes that recorded a step
-	Outputs  map[string]any   // every input and output key at the end of the run
-	Errors   map[string]error // by node id
-	Skipped  []string         // nodes no edge reached
-	Path     []GraphHop       // every edge taken, in the order taken
-	Messages []Message        // everything published on the run's bus
+	ID      uuid.UUID
+	Steps   []*Step          // recorded steps, in completion order
+	Nodes   map[string]*Step // by node id, nodes that recorded a step
+	Outputs map[string]any   // every input and output key at the end of the run
+	Errors  map[string]error // by node id
+	Skipped []string         // nodes no edge reached
+	// Ran lists every node that ran in this call — succeeded or failed, steps
+	// or not — in the order they finished.
+	Ran      []string
+	Path     []GraphHop // every edge taken, in the order taken
+	Messages []Message  // everything published on the run's bus
 	// Resumed names the wait node this run resumed from ("" = it started at
 	// the entry). Waiting names the wait node it paused at ("" = it finished),
 	// and Prompt is that node's GraphWait.Prompt.

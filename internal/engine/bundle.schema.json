@@ -4,247 +4,781 @@
   "title": "Noewright bundle",
   "description": "A portable Noewright configuration: prompts, response formats, agents, flows and graphs. Records refer to each other as slug@version.",
   "type": "object",
-  "required": ["noewright"],
+  "required": [
+    "noewright"
+  ],
   "additionalProperties": false,
   "properties": {
-    "noewright": {"const": "bundle/v1", "description": "Format version."},
-    "name": {"type": "string"},
-    "created_by": {"type": "string"},
-    "created_at": {"type": "string"},
-    "requires": {"$ref": "#/$defs/requires"},
-    "response_formats": {"type": "array", "items": {"$ref": "#/$defs/response_format"}},
-    "prompts": {"type": "array", "items": {"$ref": "#/$defs/prompt"}},
-    "agents": {"type": "array", "items": {"$ref": "#/$defs/agent"}},
-    "flows": {"type": "array", "items": {"$ref": "#/$defs/flow"}},
-    "graphs": {"type": "array", "items": {"$ref": "#/$defs/graph_record"}},
-    "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "Set by the exporter. Leave it out when writing a bundle by hand."}
+    "noewright": {
+      "const": "bundle/v1",
+      "description": "Format version."
+    },
+    "name": {
+      "type": "string"
+    },
+    "created_by": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string"
+    },
+    "requires": {
+      "$ref": "#/$defs/requires"
+    },
+    "response_formats": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/response_format"
+      }
+    },
+    "prompts": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/prompt"
+      }
+    },
+    "agents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/agent"
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flow"
+      }
+    },
+    "graphs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/graph_record"
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/test"
+      },
+      "description": "Scripted runs of the bundle's graphs, run with Bundles().Test or noewright test."
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/evidence"
+      },
+      "description": "Results of the last test run where the bundle was made. Not covered by the digest."
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "Set by the exporter. Leave it out when writing a bundle by hand."
+    }
   },
   "$defs": {
-    "slug": {"type": "string", "minLength": 1},
-    "version": {"type": "integer", "minimum": 1},
-    "ref": {"type": "string", "pattern": "^.+@[1-9][0-9]*$", "description": "slug@version"},
+    "slug": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "ref": {
+      "type": "string",
+      "pattern": "^.+@[1-9][0-9]*$",
+      "description": "slug@version"
+    },
     "requires": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "generators": {"type": "array", "items": {"$ref": "#/$defs/generator"}},
-        "funcs": {"type": "array", "items": {"type": "string"}, "description": "Go functions the importing app registers with Engine.RegisterFunc."},
-        "evaluator": {"type": "boolean"}
+        "generators": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/generator"
+          }
+        },
+        "funcs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Go functions the importing app registers with Engine.RegisterFunc."
+        },
+        "evaluator": {
+          "type": "boolean"
+        }
       }
     },
     "generator": {
       "type": "object",
-      "required": ["slug"],
+      "required": [
+        "slug"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": {"$ref": "#/$defs/slug"},
-        "modality": {"$ref": "#/$defs/modality"}
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "modality": {
+          "$ref": "#/$defs/modality"
+        }
       }
     },
-    "modality": {"enum": ["text", "image", "video", "audio", "structured", "model3d", "world"]},
+    "modality": {
+      "enum": [
+        "text",
+        "image",
+        "video",
+        "audio",
+        "structured",
+        "model3d",
+        "world"
+      ]
+    },
     "response_format": {
       "type": "object",
-      "required": ["slug", "version"],
+      "required": [
+        "slug",
+        "version"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": {"$ref": "#/$defs/slug"},
-        "version": {"$ref": "#/$defs/version"},
-        "category": {"type": "string"},
-        "schema": {"type": "object"},
-        "strict": {"type": "boolean"}
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "category": {
+          "type": "string"
+        },
+        "schema": {
+          "type": "object"
+        },
+        "strict": {
+          "type": "boolean"
+        }
       }
     },
     "prompt": {
       "type": "object",
-      "required": ["slug", "version", "kind", "body"],
+      "required": [
+        "slug",
+        "version",
+        "kind",
+        "body"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": {"$ref": "#/$defs/slug"},
-        "version": {"$ref": "#/$defs/version"},
-        "kind": {"enum": ["system", "user_template"]},
-        "category": {"type": "string"},
-        "body": {"type": "string"},
-        "variables": {"type": "array", "items": {"type": "string"}},
-        "metadata": {"type": "object"},
-        "notes": {"type": "string"}
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "kind": {
+          "enum": [
+            "system",
+            "user_template"
+          ]
+        },
+        "category": {
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadata": {
+          "type": "object"
+        },
+        "notes": {
+          "type": "string"
+        }
       }
     },
     "agent": {
       "type": "object",
-      "required": ["slug", "version", "modality", "generator"],
+      "required": [
+        "slug",
+        "version",
+        "modality",
+        "generator"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": {"$ref": "#/$defs/slug"},
-        "version": {"$ref": "#/$defs/version"},
-        "category": {"type": "string"},
-        "modality": {"$ref": "#/$defs/modality"},
-        "generator": {"$ref": "#/$defs/slug"},
-        "system_prompt": {"$ref": "#/$defs/ref"},
-        "user_template": {"$ref": "#/$defs/ref"},
-        "response_format": {"$ref": "#/$defs/ref"},
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "category": {
+          "type": "string"
+        },
+        "modality": {
+          "$ref": "#/$defs/modality"
+        },
+        "generator": {
+          "$ref": "#/$defs/slug"
+        },
+        "system_prompt": {
+          "$ref": "#/$defs/ref"
+        },
+        "user_template": {
+          "$ref": "#/$defs/ref"
+        },
+        "response_format": {
+          "$ref": "#/$defs/ref"
+        },
         "inline_response_format": {
           "type": "object",
           "additionalProperties": false,
-          "properties": {"schema": {"type": "object"}, "strict": {"type": "boolean"}}
+          "properties": {
+            "schema": {
+              "type": "object"
+            },
+            "strict": {
+              "type": "boolean"
+            }
+          }
         },
-        "params": {"$ref": "#/$defs/params"},
-        "fallback": {"$ref": "#/$defs/ref"}
+        "params": {
+          "$ref": "#/$defs/params"
+        },
+        "fallback": {
+          "$ref": "#/$defs/ref"
+        }
       }
     },
     "params": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "temperature": {"type": "number"},
-        "max_tokens": {"type": "integer"},
-        "top_p": {"type": "number"},
-        "frequency_penalty": {"type": "number"},
-        "presence_penalty": {"type": "number"},
-        "seed": {"type": "integer"},
-        "width": {"type": "integer"},
-        "height": {"type": "integer"},
-        "duration_sec": {"type": "number"},
-        "extra": {"type": "object"}
+        "temperature": {
+          "type": "number"
+        },
+        "max_tokens": {
+          "type": "integer"
+        },
+        "top_p": {
+          "type": "number"
+        },
+        "frequency_penalty": {
+          "type": "number"
+        },
+        "presence_penalty": {
+          "type": "number"
+        },
+        "seed": {
+          "type": "integer"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "duration_sec": {
+          "type": "number"
+        },
+        "extra": {
+          "type": "object"
+        }
       }
     },
     "flow": {
       "type": "object",
-      "required": ["slug", "version", "agents"],
+      "required": [
+        "slug",
+        "version",
+        "agents"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": {"$ref": "#/$defs/slug"},
-        "version": {"$ref": "#/$defs/version"},
-        "category": {"type": "string"},
-        "inputs": {"type": "array", "items": {"type": "string"}},
-        "agents": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/flow_agent"}, "description": "The first agent is the lead."}
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "category": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "agents": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/flow_agent"
+          },
+          "description": "The first agent is the lead."
+        }
       }
     },
     "flow_agent": {
       "type": "object",
-      "required": ["agent"],
+      "required": [
+        "agent"
+      ],
       "additionalProperties": false,
       "properties": {
-        "agent": {"$ref": "#/$defs/slug"},
-        "version": {"type": "integer", "minimum": 0},
-        "output": {"type": "string"},
-        "stream": {"type": "boolean"},
-        "generator_override": {"type": "string"},
-        "params": {"type": "object"},
-        "retry_mode": {"type": "integer"},
-        "max_retries": {"type": "integer"}
+        "agent": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "string"
+        },
+        "stream": {
+          "type": "boolean"
+        },
+        "generator_override": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object"
+        },
+        "retry_mode": {
+          "type": "integer"
+        },
+        "max_retries": {
+          "type": "integer"
+        }
       }
     },
     "graph_record": {
       "type": "object",
-      "required": ["slug", "version", "graph"],
+      "required": [
+        "slug",
+        "version",
+        "graph"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": {"$ref": "#/$defs/slug"},
-        "version": {"$ref": "#/$defs/version"},
-        "category": {"type": "string"},
-        "graph": {"$ref": "#/$defs/graph"}
+        "slug": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "$ref": "#/$defs/version"
+        },
+        "category": {
+          "type": "string"
+        },
+        "graph": {
+          "$ref": "#/$defs/graph"
+        }
       }
     },
     "graph": {
       "type": "object",
-      "required": ["entry", "nodes"],
+      "required": [
+        "entry",
+        "nodes"
+      ],
       "additionalProperties": false,
       "properties": {
-        "slug": {"type": "string"},
-        "entry": {"type": "string"},
-        "inputs": {"type": "array", "items": {"type": "string"}},
-        "vars": {"type": "object", "additionalProperties": {"$ref": "#/$defs/graph_var"}},
-        "nodes": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/node"}},
-        "edges": {"type": "array", "items": {"$ref": "#/$defs/edge"}}
+        "slug": {
+          "type": "string"
+        },
+        "entry": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vars": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/graph_var"
+          }
+        },
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/node"
+          }
+        },
+        "edges": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/edge"
+          }
+        }
       }
     },
     "graph_var": {
       "type": "object",
       "additionalProperties": false,
-      "properties": {"reducer": {"enum": ["replace", "append", "merge", "sum"]}}
+      "properties": {
+        "reducer": {
+          "enum": [
+            "replace",
+            "append",
+            "merge",
+            "sum"
+          ]
+        }
+      }
     },
     "node": {
       "type": "object",
-      "required": ["id", "kind"],
+      "required": [
+        "id",
+        "kind"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"type": "string", "minLength": 1},
-        "kind": {"enum": ["agent", "func", "decide", "wait"]},
-        "agent": {"$ref": "#/$defs/node_agent"},
-        "func": {"type": "string"},
-        "record": {"type": "string", "description": "Agent slug a func node's output is recorded under."},
-        "decide": {"$ref": "#/$defs/decide"},
-        "wait": {"$ref": "#/$defs/wait"},
-        "max_visits": {"type": "integer", "minimum": 0},
-        "output": {"type": "string"},
-        "save": {"type": "object", "additionalProperties": {"type": "string"}, "description": "var name → expression"},
-        "required": {"type": "boolean"},
-        "continue": {"type": "boolean"}
+        "id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "kind": {
+          "enum": [
+            "agent",
+            "func",
+            "decide",
+            "wait"
+          ]
+        },
+        "agent": {
+          "$ref": "#/$defs/node_agent"
+        },
+        "func": {
+          "type": "string"
+        },
+        "record": {
+          "type": "string",
+          "description": "Agent slug a func node's output is recorded under."
+        },
+        "decide": {
+          "$ref": "#/$defs/decide"
+        },
+        "wait": {
+          "$ref": "#/$defs/wait"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output": {
+          "type": "string"
+        },
+        "save": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "var name \u2192 expression"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "continue": {
+          "type": "boolean"
+        }
       }
     },
     "node_agent": {
       "type": "object",
-      "required": ["agent"],
+      "required": [
+        "agent"
+      ],
       "additionalProperties": false,
       "properties": {
-        "agent": {"$ref": "#/$defs/slug"},
-        "version": {"type": "integer", "minimum": 0},
-        "stream": {"type": "boolean"},
-        "output": {"type": "string"},
-        "overrides": {"type": "object", "maxProperties": 0, "description": "Never stored: overrides carry secrets. Pass them per run."},
-        "generator_override": {"type": "string"},
-        "params": {"type": "object"},
-        "retry_mode": {"type": "integer"},
-        "max_retries": {"type": "integer"},
+        "agent": {
+          "$ref": "#/$defs/slug"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "stream": {
+          "type": "boolean"
+        },
+        "output": {
+          "type": "string"
+        },
+        "overrides": {
+          "type": "object",
+          "maxProperties": 0,
+          "description": "Never stored: overrides carry secrets. Pass them per run."
+        },
+        "generator_override": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object"
+        },
+        "retry_mode": {
+          "type": "integer"
+        },
+        "max_retries": {
+          "type": "integer"
+        },
         "system_prompt": {
           "type": "object",
           "additionalProperties": false,
-          "properties": {"slug": {"type": "string"}, "version": {"type": "integer"}, "file": {"type": "string"}, "literal": {"type": "string"}}
+          "properties": {
+            "slug": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            },
+            "file": {
+              "type": "string"
+            },
+            "literal": {
+              "type": "string"
+            }
+          }
         },
-        "inputs": {"type": "object"}
+        "inputs": {
+          "type": "object"
+        }
       }
     },
     "decide": {
       "type": "object",
-      "required": ["question"],
+      "required": [
+        "question"
+      ],
       "additionalProperties": false,
       "properties": {
         "question": {
           "type": "object",
-          "required": ["type", "instructions"],
+          "required": [
+            "type",
+            "instructions"
+          ],
           "additionalProperties": false,
           "properties": {
-            "type": {"enum": ["noul", "choice", "score"]},
+            "type": {
+              "enum": [
+                "noul",
+                "choice",
+                "score"
+              ]
+            },
             "instructions": {},
             "criteria": {}
           }
         },
-        "over": {"type": "string"}
+        "over": {
+          "type": "string"
+        }
       }
     },
     "wait": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "expect": {"enum": ["any", "text", "choice"]},
-        "options": {"type": "array", "items": {"type": "string"}},
-        "pattern": {"type": "string"},
-        "prompt": {"type": "string"},
-        "record": {"type": "string"}
+        "expect": {
+          "enum": [
+            "any",
+            "text",
+            "choice"
+          ]
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "pattern": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "record": {
+          "type": "string"
+        }
       }
     },
     "edge": {
       "type": "object",
-      "required": ["from", "to"],
+      "required": [
+        "from",
+        "to"
+      ],
       "additionalProperties": false,
       "properties": {
-        "from": {"type": "string"},
-        "to": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "route": {"type": "string"},
-        "when": {"type": "string", "description": "An expr condition over inputs, data, vars, eval, visits and run."},
-        "uncertain": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
-        "default": {"type": "boolean"},
-        "on_error": {"type": "boolean"}
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "route": {
+          "type": "string"
+        },
+        "when": {
+          "type": "string",
+          "description": "An expr condition over inputs, data, vars, eval, visits and run."
+        },
+        "uncertain": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1
+        },
+        "default": {
+          "type": "boolean"
+        },
+        "on_error": {
+          "type": "boolean"
+        }
+      }
+    },
+    "test": {
+      "type": "object",
+      "required": [
+        "name",
+        "graph",
+        "steps"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "graph": {
+          "$ref": "#/$defs/ref"
+        },
+        "vars": {
+          "type": "object"
+        },
+        "inputs": {
+          "type": "object"
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/test_step"
+          }
+        }
+      }
+    },
+    "test_step": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "say": {
+          "type": "string",
+          "description": "Free text the step sends."
+        },
+        "select": {
+          "type": "string",
+          "description": "Option a choice wait receives."
+        },
+        "inputs": {
+          "type": "object"
+        },
+        "expect": {
+          "$ref": "#/$defs/expect"
+        }
+      }
+    },
+    "expect": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "waiting": {
+          "type": "string",
+          "description": "The wait node the run stops at, or \"done\"."
+        },
+        "ran": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "skipped": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contains": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "max_length": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "no_errors": {
+          "type": "boolean"
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": [
+        "test",
+        "passed"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "test": {
+          "type": "string"
+        },
+        "passed": {
+          "type": "boolean"
+        },
+        "at": {
+          "type": "string"
+        },
+        "failures": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "usd": {
+          "type": "number"
+        },
+        "priced": {
+          "type": "boolean"
+        },
+        "outputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
       }
     }
   }

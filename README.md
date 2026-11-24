@@ -297,6 +297,11 @@ noewright import support.yaml --owner tenant-7 --map g=openai-mini --dry-run
 In code: `e.Bundles().Export`, `noewright.ParseBundle`, `e.Bundles().Import`
 and `e.Bundles().Verify`. `noewright schema` prints the JSON Schema for editors.
 
+A bundle can also carry tests, scripted runs of its graphs with expectations,
+and the evidence of their last run. `e.Bundles().Test` re-runs them in the
+importing app and reports which outputs changed; `noewright test bundle.yaml`
+runs them offline against the echo generator.
+
 ### Branching & Replay
 
 Fork a session at any step index to explore an alternative timeline. The parent session is untouched. Stale branches are cleaned up automatically by the GC worker.

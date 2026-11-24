@@ -67,6 +67,7 @@ func ParseBundle(data []byte) (*Bundle, error) {
 func (b *Bundle) ComputeDigest() (string, error) {
 	c := *b
 	c.Digest = ""
+	c.Evidence = nil // evidence is a record of a run, not configuration
 	// Round-trip through YAML first, so the digest is the same whether it is
 	// computed on an exported bundle or on the same bundle read from its file
 	// (YAML decodes numbers as int where JSON decoding gave float64, and so on).
@@ -840,11 +841,23 @@ func (s *bundleService) Verify(ctx context.Context, b *Bundle, opts ImportOption
 	if b.Requires.Evaluator && e.Evaluator() == nil {
 		probs = append(probs, "a graph has decide nodes but no Evaluator is configured")
 	}
+	graphs := map[string]bool{}
 	for _, bg := range b.Graphs {
+		graphs[ref(bg.Slug, bg.Version)] = true
 		g := bg.Graph
 		g.Slug = bg.Slug
 		if _, err := e.compileGraphOpts(ctx, opts.Owner, g, true); err != nil {
 			probs = append(probs, fmt.Sprintf("graph %q: %v", bg.Slug, err))
+		}
+	}
+	for _, t := range b.Tests {
+		switch {
+		case t.Name == "":
+			probs = append(probs, "a test has no name")
+		case !graphs[t.Graph]:
+			probs = append(probs, fmt.Sprintf("test %q runs graph %q, which the bundle does not contain", t.Name, t.Graph))
+		case len(t.Steps) == 0:
+			probs = append(probs, fmt.Sprintf("test %q has no steps", t.Name))
 		}
 	}
 	return probs
