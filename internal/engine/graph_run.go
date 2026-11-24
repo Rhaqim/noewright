@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/expr-lang/expr"
@@ -389,6 +390,11 @@ func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphReques
 		nodeEvent(NodeEvent{Node: g.Nodes[i].ID, Kind: NodeSkipped})
 	}
 	run.Messages = bus.Messages()
+	if cost, err := e.runCost(ctx, res.steps); err != nil {
+		e.log.Error("graph run cost", "run_id", runID, "err", err)
+	} else {
+		run.Cost = cost
+	}
 
 	// Vars written by Save mappings and functions after the last step was
 	// persisted are saved with the session row here.
@@ -748,4 +754,44 @@ func reduceVar(r Reducer, cur, val any) any {
 	default:
 		return val
 	}
+}
+
+// runCost totals the cost rows recorded for steps.
+func (e *Engine) runCost(ctx context.Context, steps []*Step) (UsageSummary, error) {
+	sum := UsageSummary{ByModel: map[string]float64{}, PricingConfigured: true}
+	if len(steps) == 0 {
+		return sum, nil
+	}
+	args := make([]any, len(steps))
+	marks := make([]string, len(steps))
+	for i, st := range steps {
+		args[i] = st.ID
+		marks[i] = fmt.Sprintf("$%d", i+1)
+	}
+	rows, err := e.db.QueryContext(ctx, fmt.Sprintf(
+		`SELECT model, input_tokens, output_tokens, usd_cost, estimated FROM %scost_records WHERE step_id IN (%s)`,
+		e.prefix, strings.Join(marks, ",")), args...)
+	if err != nil {
+		return sum, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			model     string
+			in, out   int
+			usd       float64
+			estimated bool
+		)
+		if err := rows.Scan(&model, &in, &out, &usd, &estimated); err != nil {
+			return sum, err
+		}
+		sum.TotalUSD += usd
+		sum.TotalTokens += in + out
+		sum.StepCount++
+		sum.ByModel[model] += usd
+		if estimated {
+			sum.PricingConfigured = false
+		}
+	}
+	return sum, rows.Err()
 }

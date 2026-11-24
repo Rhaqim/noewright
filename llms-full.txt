@@ -2701,6 +2701,10 @@ type GraphRun struct {
 	Skipped  []string         // nodes no edge reached
 	Path     []GraphHop       // every edge taken, in the order taken
 	Messages []Message        // everything published on the run's bus
+	// Cost totals the cost rows of the run's steps. Recorded steps (functions
+	// with Record) have none. PricingConfigured is false when any row was priced
+	// from the placeholder rate: show the USD as unknown then.
+	Cost UsageSummary
 }
     GraphRun is the result of RunGraph.
 
