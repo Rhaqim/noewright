@@ -1260,6 +1260,10 @@ type GraphRun = engine.GraphRun
 // Bundle
 ////////////////////////////////////////////////////////////////////////////////
 
+// BundleSchema returns the JSON Schema for bundle files, for editors and other
+// tools that check a bundle as it is written.
+var BundleSchema = engine.BundleSchema
+
 // ParseBundle reads a bundle from YAML or JSON, checks its format version, and
 // checks its digest when it has one.
 var ParseBundle = engine.ParseBundle

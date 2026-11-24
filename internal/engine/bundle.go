@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"database/sql"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -20,6 +21,13 @@ import (
 	"github.com/google/uuid"
 	"gopkg.in/yaml.v3"
 )
+
+//go:embed bundle.schema.json
+var bundleSchema []byte
+
+// BundleSchema returns the JSON Schema for bundle files, for editors and other
+// tools that check a bundle as it is written.
+func BundleSchema() []byte { return slices.Clone(bundleSchema) }
 
 // maxBundleBytes bounds what ParseBundle reads.
 const maxBundleBytes = 16 << 20

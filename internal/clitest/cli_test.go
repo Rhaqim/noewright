@@ -6,25 +6,23 @@
 package clitest
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/rhaqim/noewright/internal/dsnenv"
 )
 
 var cliBin string // path to the compiled noewright binary
 
-// TestMain compiles the noewright binary before any test runs.
+// TestMain compiles the noewright binary before any test runs. It builds even
+// without NOEWRIGHT_DSN: some commands (verify, schema) need no database, and
+// the database-backed tests skip themselves through requireDSN.
 func TestMain(m *testing.M) {
-	dsn := dsnenv.Get()
-	if dsn == "" {
-		// Skip compilation — tests will skip themselves.
-		os.Exit(m.Run())
-	}
-
 	tmp, err := os.MkdirTemp("", "noewright-test-*")
 	if err != nil {
 		panic("tmpdir: " + err.Error())
@@ -254,4 +252,84 @@ func writeTempFile(t *testing.T, pattern, content string) string {
 	f.Close()
 	t.Cleanup(func() { os.Remove(f.Name()) })
 	return f.Name()
+}
+
+// handBundle is a bundle written by hand: no digest, a generator the CLI does
+// not register (the app would), and a graph with a function only the app has.
+const handBundle = `noewright: bundle/v1
+name: cli-test
+requires:
+  generators: [{slug: chat, modality: text}]
+  funcs: [lookup-account]
+prompts:
+  - {slug: cli-ut, version: 1, kind: user_template, body: "T[{{.Inputs.action}}]"}
+agents:
+  - {slug: cli-triage, version: 1, modality: text, generator: chat, user_template: cli-ut@1}
+graphs:
+  - slug: cli-support
+    version: 1
+    graph:
+      entry: intake
+      nodes:
+        - {id: intake, kind: agent, agent: {agent: cli-triage, version: 1, output: Ticket}}
+        - {id: account, kind: func, func: lookup-account}
+      edges:
+        - {from: intake, to: [account]}
+`
+
+func TestCLI_BundleVerifyOffline(t *testing.T) {
+	path := writeTempFile(t, "bundle-*.yaml", handBundle)
+	out, code := run(t, "verify", path)
+	if code != 0 {
+		t.Fatalf("verify exited %d:\n%s", code, out)
+	}
+	for _, want := range []string{"OK: 1 prompts", `generator "chat"`, `function "lookup-account"`, "no digest"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("verify output lacks %q:\n%s", want, out)
+		}
+	}
+	broken := strings.Replace(handBundle, "user_template: cli-ut@1", "user_template: missing@1", 1)
+	if out, code := run(t, "verify", writeTempFile(t, "bundle-bad-*.yaml", broken)); code == 0 || !strings.Contains(out, "missing@1") {
+		t.Fatalf("verify of a dangling reference exited %d:\n%s", code, out)
+	}
+}
+
+func TestCLI_BundleImportExport(t *testing.T) {
+	requireDSN(t)
+	run(t, "migrate")
+	owner := fmt.Sprintf("cli-%d", time.Now().UnixNano())
+	path := writeTempFile(t, "bundle-*.yaml", handBundle)
+
+	out, code := run(t, "import", path, "--owner", owner, "--map", "chat=echo", "--dry-run")
+	if code != 0 || !strings.Contains(out, "Dry run") || !strings.Contains(out, "create") {
+		t.Fatalf("dry run exited %d:\n%s", code, out)
+	}
+	out, code = run(t, "import", path, "--owner", owner, "--map", "chat=echo", "--activate")
+	if code != 0 || !strings.Contains(out, "Imported.") || !strings.Contains(out, `function "lookup-account" is not registered`) {
+		t.Fatalf("import exited %d:\n%s", code, out)
+	}
+	out, code = run(t, "import", path, "--owner", owner, "--map", "chat=echo")
+	if code != 0 || !strings.Contains(out, "Nothing to import") {
+		t.Fatalf("second import exited %d:\n%s", code, out)
+	}
+
+	exported := filepath.Join(t.TempDir(), "out.yaml")
+	if out, code := run(t, "export", "graph:cli-support", "--owner", owner, "-o", exported); code != 0 {
+		t.Fatalf("export exited %d:\n%s", code, out)
+	}
+	data, err := os.ReadFile(exported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "digest: sha256:") || !strings.Contains(string(data), "generator: echo") {
+		t.Fatalf("exported bundle:\n%s", data)
+	}
+	if out, code := run(t, "verify", exported); code != 0 {
+		t.Fatalf("verify of the exported bundle exited %d:\n%s", code, out)
+	}
+	changed := strings.Replace(handBundle, "T[{{.Inputs.action}}]", "CHANGED", 1)
+	out, code = run(t, "import", writeTempFile(t, "bundle-chg-*.yaml", changed), "--owner", owner, "--map", "chat=echo")
+	if code == 0 || !strings.Contains(out, "conflict") {
+		t.Fatalf("conflicting import exited %d:\n%s", code, out)
+	}
 }

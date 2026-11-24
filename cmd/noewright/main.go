@@ -32,7 +32,7 @@ func main() {
 	root.PersistentFlags().String("dsn", "", "PostgreSQL connection string. WARNING: visible to other users via 'ps'/'/proc'; prefer NOEWRIGHT_DSN or --dsn-file")
 	root.PersistentFlags().String("dsn-file", "", "path to a file containing the PostgreSQL connection string (keeps credentials out of the process arguments)")
 
-	root.AddCommand(migrateCmd(), seedCmd(), testCmd())
+	root.AddCommand(migrateCmd(), seedCmd(), testCmd(), exportCmd(), importCmd(), verifyCmd(), schemaCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

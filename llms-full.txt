@@ -266,6 +266,43 @@ drafts), `Get` (version 0 = latest active), `SetActive` (publish / rollback),
 editor) and `e.RunGraphBySlug`. A saved graph refuses `Agent.Overrides`: they
 carry API keys, so pass them on `GraphRequest.Overrides`.
 
+## Bundles: move a configuration between databases
+
+A bundle is one YAML file with prompts, response formats, agents, flows and
+graphs. Records refer to each other as `slug@version`; the owner, secrets and
+code stay behind. `requires` lists the generators (mapped to local ones on
+import), the Go functions the importing app must register, and whether an
+Evaluator is needed. A `sha256` digest catches edits and damage.
+
+```go
+b, _ := e.Bundles().Export(ctx, owner,
+    noewright.BundleRoot{Kind: "graph", Slug: "support"},   // version 0 = active
+    noewright.BundleRoot{Kind: "flow", Slug: "triage-turn", Version: 2})
+data, _ := b.Marshal()                                       // YAML with the digest set
+
+b, err := noewright.ParseBundle(data)                        // checks format and digest
+rep, err := other.Bundles().Import(ctx, b, noewright.ImportOptions{
+    Owner:      "tenant-7",
+    Generators: map[string]string{"g": "openai-mini"},     // bundle slug → local slug
+    OnConflict: noewright.ConflictFail,                      // or ConflictBump
+    Activate:   true,                                        // else flows/graphs arrive as drafts
+    DryRun:     false,
+})
+// rep.Items: create | skip | conflict | bump (NewVersion) per record
+problems := other.Bundles().Verify(ctx, b, opts)             // run at app startup
+```
+
+Import is idempotent: identical records are skipped, so importing the same file
+twice writes nothing. A record that differs fails the import with
+`ErrBundleConflict` (nothing written) unless `ConflictBump` imports it as the
+next free version and rewrites the bundle's references to it. Everything is
+written in one transaction. `noewright.BundleSchema()` returns the JSON Schema
+for the file.
+
+CLI: `noewright export graph:support flow:triage-turn@2 -o support.yaml`,
+`noewright import support.yaml --owner tenant-7 --map g=openai-mini --dry-run`,
+`noewright verify support.yaml` (no database needed), `noewright schema`.
+
 ## Shared sessions: participants, human steps, live events
 
 For a session several people share (a multiplayer game):
@@ -1131,6 +1168,10 @@ var EvalScoreOf = evaluator.ScoreOf
 
 
 FUNCTIONS
+
+func BundleSchema() []byte
+    BundleSchema returns the JSON Schema for bundle files, for editors and other
+    tools that check a bundle as it is written.
 
 func ErrRetryScored(ann RetryAnnotation, score int, draft Result) error
     ErrRetryScored is ErrRetryWith plus a score for the rejected draft and the

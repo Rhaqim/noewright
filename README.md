@@ -280,6 +280,23 @@ Graphs can be saved and versioned like flows (`e.Graphs()`, `e.RunGraphBySlug`),
 and `Graphs().Plan` returns the wiring, problems and cost estimates for a
 visual editor. See [`llms.txt`](llms.txt) for the full reference.
 
+### Bundles
+
+Export graphs and flows with everything they use into one YAML file, and load
+it into another database. References are `slug@version`, never database ids;
+secrets and code stay behind. Importing the same file twice changes nothing,
+and a record that differs stops the import unless you ask for it to be bumped
+to a new version.
+
+```bash
+noewright export graph:support -o support.yaml
+noewright verify support.yaml                               # no database needed
+noewright import support.yaml --owner tenant-7 --map g=openai-mini --dry-run
+```
+
+In code: `e.Bundles().Export`, `noewright.ParseBundle`, `e.Bundles().Import`
+and `e.Bundles().Verify`. `noewright schema` prints the JSON Schema for editors.
+
 ### Branching & Replay
 
 Fork a session at any step index to explore an alternative timeline. The parent session is untouched. Stale branches are cleaned up automatically by the GC worker.
