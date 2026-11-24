@@ -32,6 +32,11 @@ const (
 	// EventForked fires on the parent when a branch is forked from it;
 	// BranchID is the new session.
 	EventForked SessionEventType = "forked"
+	// EventGraphHop fires for every edge a RunGraph run takes. Node is the
+	// node the edge leaves; Hop describes it.
+	EventGraphHop SessionEventType = "graph.hop"
+	// EventGraphDone fires when a RunGraph run finishes. TurnID is the run ID.
+	EventGraphDone SessionEventType = "graph.done"
 )
 
 // SessionEvent is one event on a session's stream. Treat it as read-only: the
@@ -51,6 +56,9 @@ type SessionEvent struct {
 	TurnRole  string // "lead", "follower:<slug>" or "" outside a turn
 	Err       string // step.failed
 	BranchID  uuid.UUID
+	// Node and Hop are set on graph events.
+	Node string
+	Hop  *GraphHop
 	// Replayed marks a step.done rebuilt from storage on Subscribe, rather
 	// than delivered live.
 	Replayed bool

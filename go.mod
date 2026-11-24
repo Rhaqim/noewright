@@ -3,6 +3,7 @@ module github.com/rhaqim/noewright
 go 1.26.0
 
 require (
+	github.com/expr-lang/expr v1.17.8
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
 	github.com/spf13/cobra v1.10.2

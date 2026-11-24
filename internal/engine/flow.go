@@ -308,7 +308,7 @@ func (e *Engine) compileTurn(ctx context.Context, session *Session, req TurnRequ
 		outputKey: leadKey,
 		inputs:    req.Flow.Lead.Inputs,
 		required:  true,
-		run: func(ctx context.Context, in map[string]any) (*Step, error) {
+		run: func(ctx context.Context, in map[string]any) (*execOut, error) {
 			step, err := e.steps.run(ctx, session, StepRequest{
 				external:             req.LeadResult,
 				author:               req.LeadAuthor,
@@ -333,16 +333,17 @@ func (e *Engine) compileTurn(ctx context.Context, session *Session, req TurnRequ
 				*leadStep = step
 				bus.Publish(leadSlug, "lead.done", ResultText(step.Result))
 			}
-			return step, err
+			return stepOut(step, err), err
 		},
 		// ErrSessionNotPersisted means the lead step itself ran and committed —
 		// only the session row is stale. The turn proceeds; the error is
 		// surfaced on Turn.Errors["lead"]. The lead callback fires before any
 		// follower starts, so an embedder can build follower inputs from it.
-		settled: func(step *Step, err error) {
-			if !stepSucceeded(step, err) {
+		settled: func(out *execOut, err error) {
+			if !outSucceeded(out, err) {
 				return
 			}
+			step := out.step
 			if err != nil {
 				e.log.Error("turn lead session row not persisted", "turn_id", turnID, "agent", leadSlug, "err", err)
 			}
@@ -357,7 +358,7 @@ func (e *Engine) compileTurn(ctx context.Context, session *Session, req TurnRequ
 	for _, f := range followers {
 		g.nodes = append(g.nodes, e.followerNode(session, req, turnID, f, leadStep, bus))
 	}
-	g.succ = make([][]int, len(g.nodes))
+	g.succ = make([][]execEdge, len(g.nodes))
 
 	// Dependency layers, exactly as the turn has always computed them.
 	outputKeys := make([]string, len(followers))
@@ -382,7 +383,9 @@ func (e *Engine) compileTurn(ctx context.Context, session *Session, req TurnRequ
 			cur = append(cur, idx+1)
 		}
 		for _, p := range prev {
-			g.succ[p] = append(g.succ[p], cur...)
+			for _, c := range cur {
+				g.succ[p] = append(g.succ[p], execEdge{to: c})
+			}
 		}
 		prev = cur
 	}
@@ -404,7 +407,7 @@ func (e *Engine) followerNode(session *Session, req TurnRequest, turnID uuid.UUI
 			e.log.Error("turn follower panicked", "turn_id", turnID, "agent", f.AgentSlug, "err", perr)
 			return perr
 		},
-		run: func(ctx context.Context, in map[string]any) (*Step, error) {
+		run: func(ctx context.Context, in map[string]any) (*execOut, error) {
 			step, ferr := e.steps.run(ctx, session, StepRequest{
 				AgentSlug:    f.AgentSlug,
 				AgentVersion: f.AgentVersion,
@@ -433,13 +436,17 @@ func (e *Engine) followerNode(session *Session, req TurnRequest, turnID uuid.UUI
 			if ferr != nil {
 				e.log.Error("turn follower failed", "turn_id", turnID, "agent", f.AgentSlug, "err", ferr)
 			}
-			return step, ferr
+			return stepOut(step, ferr), ferr
 		},
 		// OnStep fires from the follower's own goroutine, outside any lock, so a
 		// slow callback on one follower cannot serialize the others.
-		settled: func(step *Step, err error) {
+		settled: func(out *execOut, err error) {
 			if req.OnStep == nil {
 				return
+			}
+			var step *Step
+			if out != nil {
+				step = out.step
 			}
 			switch {
 			case step != nil && errors.Is(err, ErrSessionNotPersisted):

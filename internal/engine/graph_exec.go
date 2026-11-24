@@ -11,7 +11,8 @@ package engine
 // Scheduling rules:
 //
 //   - The entry node is active from the start. Any other node is active once at
-//     least one incoming edge has fired.
+//     least one incoming control edge has fired. Data edges only order: a node
+//     waits for the producers its data edges come from, but they never start it.
 //   - A node starts when every incoming edge is resolved: fired, or dead because
 //     its source settled without firing it or was itself never activated
 //     ("dead-path elimination"). A node all of whose incoming edges are dead is
@@ -32,6 +33,14 @@ import (
 	"errors"
 	"sync"
 )
+
+// execOut is what a node produced. step is nil for a node that records no step
+// (a function or a decision); result is the node's output either way.
+type execOut struct {
+	step   *Step
+	result Result
+	route  string // the route value edges can match ("" = none)
+}
 
 // execNode is one node of an executable graph.
 type execNode struct {
@@ -55,18 +64,31 @@ type execNode struct {
 	// skips it (no step, no settled call); an error skips it and is recorded,
 	// and settled is called with (nil, err).
 	gate func(ctx context.Context, in map[string]any) (bool, error)
-	// run does the node's work. A non-nil step alongside ErrSessionNotPersisted
+	// run does the node's work. A non-nil out alongside ErrSessionNotPersisted
 	// counts as success: the step committed and only the session row is stale.
-	run func(ctx context.Context, in map[string]any) (*Step, error)
+	run func(ctx context.Context, in map[string]any) (*execOut, error)
 	// settled is called on the node's own goroutine after its outcome is
-	// recorded and before any successor can start, with run's raw (step, err).
-	settled func(step *Step, err error)
+	// recorded and before any successor can start, with run's raw (out, err).
+	settled func(out *execOut, err error)
+	// choose, when set, decides which outgoing edges fire once the node has
+	// run (fire[k] is for succ[i][k]; data edges ignore it). It is called on the
+	// coordinating goroutine after the node's output is written to the shared
+	// inputs, with ok reporting success. When nil, every edge fires on success,
+	// and on failure only if fireOnFail. A gated-out node never calls it.
+	choose func(out *execOut, ok bool) []bool
+}
+
+// execEdge is one outgoing edge. A data edge orders its target after its source
+// but never activates it.
+type execEdge struct {
+	to   int
+	data bool
 }
 
 // execGraph is a set of nodes, their outgoing edges, and the entry node.
 type execGraph struct {
 	nodes []execNode
-	succ  [][]int // succ[i] = nodes that node i's edges lead to
+	succ  [][]execEdge // succ[i] = node i's outgoing edges
 	entry int
 }
 
@@ -78,17 +100,32 @@ type execError struct {
 
 // execResult is what a run produced.
 type execResult struct {
-	steps     []*Step // successful steps, in completion order
+	steps     []*Step // recorded steps, in completion order
 	stepNodes []int   // stepNodes[k] is the node that produced steps[k]
-	stepOf    map[int]*Step
+	outOf     map[int]*execOut
 	errs      []execError // in the order they were recorded
 	skipped   []int       // gated-out nodes, in completion order
+	dead      []int       // nodes never activated, in the order found dead
 	abort     error       // set when a required node failed
+	abortNode int
 }
 
 // stepSucceeded reports whether run's (step, err) counts as a success.
 func stepSucceeded(step *Step, err error) bool {
 	return step != nil && (err == nil || errors.Is(err, ErrSessionNotPersisted))
+}
+
+// outSucceeded reports whether a node's (out, err) counts as a success.
+func outSucceeded(out *execOut, err error) bool {
+	return out != nil && (err == nil || errors.Is(err, ErrSessionNotPersisted))
+}
+
+// stepOut wraps an agent step as a node output; nil for a failed step.
+func stepOut(step *Step, err error) *execOut {
+	if step == nil {
+		return nil
+	}
+	return &execOut{step: step, result: step.Result}
 }
 
 // runExecGraph runs g against the shared inputs map, which it updates with each
@@ -98,31 +135,33 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 	n := len(g.nodes)
 	pred := make([]int, n) // number of incoming edges per node
 	for _, ss := range g.succ {
-		for _, j := range ss {
-			pred[j]++
+		for _, e := range ss {
+			pred[e.to]++
 		}
 	}
 	resolved := make([]int, n)
 	fired := make([]int, n)
 
-	res := &execResult{stepOf: map[int]*Step{}}
+	res := &execResult{outOf: map[int]*execOut{}}
 	var mu sync.Mutex // guards res while nodes run concurrently
 
-	// resolve marks node i's outgoing edges fired or dead and returns the nodes
-	// that became ready. Dead nodes are propagated through immediately.
-	resolve := func(i int, fire bool) []int {
+	// resolve marks node i's outgoing edges fired or dead (fire[k] for edge k;
+	// nil = none fire) and returns the nodes that became ready. Dead nodes are
+	// propagated through immediately.
+	resolve := func(i int, fire []bool) []int {
 		var ready []int
-		type edge struct {
+		type settledEdges struct {
 			from int
-			fire bool
+			fire []bool
 		}
-		queue := []edge{{i, fire}}
+		queue := []settledEdges{{i, fire}}
 		for len(queue) > 0 {
-			e := queue[0]
+			src := queue[0]
 			queue = queue[1:]
-			for _, j := range g.succ[e.from] {
+			for k, e := range g.succ[src.from] {
+				j := e.to
 				resolved[j]++
-				if e.fire {
+				if !e.data && src.fire != nil && src.fire[k] {
 					fired[j]++
 				}
 				if resolved[j] < pred[j] {
@@ -131,16 +170,28 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 				if fired[j] > 0 {
 					ready = append(ready, j)
 				} else {
-					queue = append(queue, edge{j, false}) // dead: its edges die too
+					res.dead = append(res.dead, j)
+					queue = append(queue, settledEdges{j, nil}) // dead: its edges die too
 				}
 			}
 		}
 		return ready
 	}
+	// uniform fires every edge of node i, or none.
+	uniform := func(i int, fire bool) []bool {
+		if !fire {
+			return nil
+		}
+		f := make([]bool, len(g.succ[i]))
+		for k := range f {
+			f[k] = true
+		}
+		return f
+	}
 
-	// execOne runs node i with its launch-time inputs and reports whether its
-	// outgoing edges fire and whether it succeeded.
-	execOne := func(i int, in map[string]any) (fire, ok bool) {
+	// execOne runs node i with its launch-time inputs and reports whether it
+	// ran (false = gated out), and whether it succeeded.
+	execOne := func(i int, in map[string]any) (ran, ok bool) {
 		node := &g.nodes[i]
 		succeeded, settledCalled := false, false
 		if node.recoverPanics {
@@ -158,7 +209,7 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 				if node.settled != nil && !settledCalled {
 					node.settled(nil, perr)
 				}
-				fire, ok = succeeded || node.fireOnFail, succeeded
+				ran, ok = true, succeeded
 			}()
 		}
 
@@ -173,39 +224,41 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 					settledCalled = true
 					node.settled(nil, gerr)
 				}
-				return node.fireOnFail, false
+				return false, false
 			}
 			if !run {
 				mu.Lock()
 				res.skipped = append(res.skipped, i)
 				mu.Unlock()
-				return node.fireOnFail, false
+				return false, false
 			}
 		}
 
-		step, err := node.run(ctx, in)
-		succeeded = stepSucceeded(step, err)
+		out, err := node.run(ctx, in)
+		succeeded = outSucceeded(out, err)
 		mu.Lock()
 		if err != nil {
 			res.errs = append(res.errs, execError{i, err})
 		}
 		if succeeded {
-			res.stepOf[i] = step
-			res.steps = append(res.steps, step)
-			res.stepNodes = append(res.stepNodes, i)
+			res.outOf[i] = out
+			if out.step != nil {
+				res.steps = append(res.steps, out.step)
+				res.stepNodes = append(res.stepNodes, i)
+			}
 		}
 		mu.Unlock()
 		if node.settled != nil {
 			settledCalled = true
-			node.settled(step, err)
+			node.settled(out, err)
 		}
-		return succeeded || node.fireOnFail, succeeded
+		return true, succeeded
 	}
 
 	type settledNode struct {
-		node     int
-		fire, ok bool
-		err      error
+		node    int
+		ran, ok bool
+		err     error
 	}
 	done := make(chan settledNode, n)
 	running := 0
@@ -218,17 +271,26 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 		if !s.ok && node.required {
 			aborted = true
 			mu.Lock()
-			res.abort = s.err
+			res.abort, res.abortNode = s.err, s.node
 			mu.Unlock()
 			return
 		}
-		if s.ok && node.outputKey != "" {
-			mu.Lock()
-			step := res.stepOf[s.node]
-			mu.Unlock()
-			inputs[node.outputKey] = ResultText(step.Result)
+		mu.Lock()
+		out := res.outOf[s.node]
+		mu.Unlock()
+		if s.ok && node.outputKey != "" && out.result != nil {
+			inputs[node.outputKey] = ResultText(out.result)
 		}
-		ready = append(ready, resolve(s.node, s.fire)...)
+		var fire []bool
+		switch {
+		case !s.ran: // gated out
+			fire = uniform(s.node, node.fireOnFail)
+		case node.choose != nil:
+			fire = node.choose(out, s.ok)
+		default:
+			fire = uniform(s.node, s.ok || node.fireOnFail)
+		}
+		ready = append(ready, resolve(s.node, fire)...)
 	}
 	// lastErr returns the most recent error recorded for node i, or a generic
 	// one when the node failed without recording any (a gated-out required node).
@@ -249,8 +311,8 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 			ready = nil
 			if len(batch) == 1 && running == 0 {
 				i := batch[0]
-				fire, ok := execOne(i, agentInputs(inputs, g.nodes[i].inputs))
-				s := settledNode{node: i, fire: fire, ok: ok}
+				ran, ok := execOne(i, agentInputs(inputs, g.nodes[i].inputs))
+				s := settledNode{node: i, ran: ran, ok: ok}
 				if !ok {
 					s.err = lastErr(i)
 				}
@@ -261,8 +323,8 @@ func runExecGraph(ctx context.Context, g *execGraph, inputs map[string]any) *exe
 				in := agentInputs(inputs, g.nodes[i].inputs) // cloned at launch
 				running++
 				go func(i int, in map[string]any) {
-					fire, ok := execOne(i, in)
-					s := settledNode{node: i, fire: fire, ok: ok}
+					ran, ok := execOne(i, in)
+					s := settledNode{node: i, ran: ran, ok: ok}
 					if !ok {
 						s.err = lastErr(i)
 					}

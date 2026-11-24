@@ -170,6 +170,10 @@ type Engine struct {
 
 	onTaskResolved func(context.Context, TaskResolution)
 
+	// funcs are the Go functions graph func nodes call, by name.
+	funcsMu sync.RWMutex
+	funcs   map[string]GraphFunc
+
 	// pollerCancel stops the async poller; bg tracks every background goroutine
 	// the engine owns so Close can wait for them to drain. Both are guarded by
 	// mu.

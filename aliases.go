@@ -782,6 +782,13 @@ const EventTurnDone = engine.EventTurnDone
 // BranchID is the new session.
 const EventForked = engine.EventForked
 
+// EventGraphHop fires for every edge a RunGraph run takes. Node is the
+// node the edge leaves; Hop describes it.
+const EventGraphHop = engine.EventGraphHop
+
+// EventGraphDone fires when a RunGraph run finishes. TurnID is the run ID.
+const EventGraphDone = engine.EventGraphDone
+
 // SessionEvent is one event on a session's stream. Treat it as read-only: the
 // same value is delivered to every subscriber.
 type SessionEvent = engine.SessionEvent
@@ -1024,3 +1031,118 @@ const GenerationEmpty = engine.GenerationEmpty
 // GenerationError is returned when a generator fails to produce a usable result.
 // Inspect it with errors.As(err, &noewright.GenerationError{}) and switch on Kind.
 type GenerationError = engine.GenerationError
+
+////////////////////////////////////////////////////////////////////////////////
+// Graph
+////////////////////////////////////////////////////////////////////////////////
+
+// GraphNodeKind names what a graph node does.
+type GraphNodeKind = engine.GraphNodeKind
+
+// NodeAgent runs an agent and records a step.
+const NodeAgent = engine.NodeAgent
+
+// NodeFunc calls a Go function registered with Engine.RegisterFunc. It
+// records a step only when GraphNode.Record names an agent to attribute it to.
+const NodeFunc = engine.NodeFunc
+
+// NodeDecide asks the Evaluator one question and emits the answer as the
+// node's route value. It records no step.
+const NodeDecide = engine.NodeDecide
+
+// Graph is a set of nodes joined by edges, run with Engine.RunGraph.
+//
+// Edges come from two places. Control edges are written in Edges; they start
+// nodes and carry routing. Data edges are inferred: when an agent node's user
+// template declares a variable (Prompt.Variables) that another node produces
+// under its output key, the consumer runs after the producer. Data edges order
+// nodes but never start one.
+//
+// A node runs once at least one control edge into it has fired and every edge
+// into it is settled — fired, or dead because its source finished without
+// firing it or never ran. So a node several branches lead to waits for the
+// branches that actually started in this run, and no longer.
+type Graph = engine.Graph
+
+// Reducer combines a new value into a session var.
+type Reducer = engine.Reducer
+
+// ReduceReplace overwrites the var (the default).
+const ReduceReplace = engine.ReduceReplace
+
+// ReduceAppend appends to a list, creating it if absent.
+const ReduceAppend = engine.ReduceAppend
+
+// ReduceMerge merges a map's keys into the var's map.
+const ReduceMerge = engine.ReduceMerge
+
+// ReduceSum adds a number to the var.
+const ReduceSum = engine.ReduceSum
+
+// GraphVar declares a session var's reducer.
+type GraphVar = engine.GraphVar
+
+// GraphNode is one node of a Graph. Set the fields for its Kind.
+type GraphNode = engine.GraphNode
+
+// GraphDecision is the question a NodeDecide asks.
+type GraphDecision = engine.GraphDecision
+
+// GraphEdge joins one node to one or more nodes. At most one of Route, When,
+// Uncertain, Default and OnError may be set; with none the edge always fires.
+//
+// When a node settles, every matching edge fires, so several edges can fire at
+// once. Default fires when no other edge from the node did. When an Uncertain
+// edge fires, the node's Route edges do not.
+type GraphEdge = engine.GraphEdge
+
+// GraphFunc is a Go function a NodeFunc calls. It must be safe to call
+// concurrently: parallel branches may call it at the same time.
+type GraphFunc = engine.GraphFunc
+
+// FuncCall is what a GraphFunc receives.
+type FuncCall = engine.FuncCall
+
+// FuncResult is what a GraphFunc returns.
+type FuncResult = engine.FuncResult
+
+// GraphRequest is the input to RunGraph.
+type GraphRequest = engine.GraphRequest
+
+// NodeEventKind names a NodeEvent.
+type NodeEventKind = engine.NodeEventKind
+
+const NodeStarted = engine.NodeStarted
+
+const NodeDone = engine.NodeDone
+
+const NodeFailed = engine.NodeFailed
+
+// NodeSkipped: no edge into the node fired, so it did not run.
+const NodeSkipped = engine.NodeSkipped
+
+// NodeEvent is one node's progress in a run.
+type NodeEvent = engine.NodeEvent
+
+// GraphHop is one edge a run took.
+type GraphHop = engine.GraphHop
+
+// GraphRun is the result of RunGraph.
+//
+// Expressions in edges and Save mappings see:
+//
+//	inputs   run inputs and every output produced so far, by key
+//	data     structured outputs by key (data.Ticket.priority)
+//	vars     the session vars
+//	eval     decision results by node id: label, p, certainty, noul, score,
+//	         probabilities
+//	run      errors: node id → error message, for nodes failed so far
+type GraphRun = engine.GraphRun
+
+////////////////////////////////////////////////////////////////////////////////
+// Graph run
+////////////////////////////////////////////////////////////////////////////////
+
+// ErrInvalidGraph is returned when a graph cannot run as written. The wrapped
+// error names the problem.
+var ErrInvalidGraph = engine.ErrInvalidGraph
