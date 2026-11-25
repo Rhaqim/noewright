@@ -42,7 +42,11 @@ Noewright handles the infrastructure — session management, versioned agents an
 go get github.com/rhaqim/noewright
 ```
 
-Requires Go 1.24+ (the module targets Go 1.25; see `go.mod`) and a Postgres or SQLite database.
+Requires Go 1.26+ and a Postgres or SQLite database. The Anthropic adapter is its own module, so the SDK's dependencies stay out of Noewright:
+
+```bash
+go get github.com/rhaqim/noewright/generator/anthropic
+```
 
 ---
 
@@ -276,7 +280,25 @@ run, err := e.RunGraph(ctx, sess, noewright.GraphRequest{Graph: noewright.Graph{
 }, Action: action})
 ```
 
-Graphs can be saved and versioned like flows (`e.Graphs()`, `e.RunGraphBySlug`),
+A failed node ends its own branch unless an `OnError` edge leaves it, it sets
+`Continue`, or it is `Required` (which fails the run). A graph that cannot run
+is refused with `ErrInvalidGraph` before anything runs.
+
+A `NodeWait` pauses the run for a person: the run returns with `run.Waiting`
+and `run.Prompt`, the session keeps a cursor, and the next `RunGraph` call with
+an `Action` resumes there (a fork at that step resumes there too). Loops must
+pass through a wait node. An input the wait doesn't accept returns
+`ErrWaitInput`; a session paused in another graph returns `ErrGraphMismatch`
+until you set `GraphRequest.Restart`.
+
+```go
+{ID: "clarify", Kind: noewright.NodeWait, OutputKey: "Answer", Wait: &noewright.GraphWait{
+    Expect: noewright.ExpectText, Prompt: "Refund or bug report?"}},
+// edges: {From: "intent", Uncertain: 0.6, To: []string{"clarify"}}, {From: "clarify", To: []string{"intent"}}
+```
+
+Graphs can be saved and versioned like flows (`e.Graphs()`, `e.RunGraphBySlug`,
+which resumes on the version a session paused in),
 and `Graphs().Plan` returns the wiring, problems and cost estimates for a
 visual editor. See [`llms.txt`](llms.txt) for the full reference.
 
@@ -360,6 +382,12 @@ type AsyncGenerator interface {
 > This is deliberate: an un-allowlisted base URL would let a caller redirect the request —
 > and your API key — to an arbitrary host.
 
+`Params.Extra["effort"]` sets how hard a model thinks: the Anthropic adapter
+sends it as `output_config.effort`; the OpenAI adapter sends it as
+`reasoning_effort` to reasoning models (gpt-5, o-series), which also get
+`max_completion_tokens` in place of `max_tokens` and no sampling settings. Their
+hidden reasoning tokens are in the result's `Metadata()["reasoning_tokens"]`.
+
 See [`llms.txt`](llms.txt) for full, copy-pasteable custom-generator examples.
 
 ### Actions
@@ -426,8 +454,9 @@ default:
 ```
 
 Other typed errors: `*noewright.BudgetExceededError` (budget block), `*noewright.RetryError`
-(via `noewright.IsRetry` / `noewright.RetryAnnotationFrom`), and `noewright.ErrInvalidConfig` from
-`noewright.New`. See [`llms.txt`](llms.txt) for the full contract.
+(via `noewright.IsRetry` / `noewright.RetryAnnotationFrom`), `noewright.ErrInvalidConfig` from
+`noewright.New`, and from `RunGraph`: `noewright.ErrInvalidGraph`, `noewright.ErrWaitInput`
+and `noewright.ErrGraphMismatch`. See [`llms.txt`](llms.txt) for the full contract.
 
 ### Cost tracking & budgets
 
@@ -604,8 +633,15 @@ noewright migrate
 # Seed agents and prompts from a YAML file.
 noewright seed seed.yaml
 
-# Run a test plan.
+# Run a test plan, or a bundle's tests offline (echo generator).
 noewright test plan.yaml
+noewright test bundle.yaml
+
+# Bundles: export, check without a database, import, print the JSON Schema.
+noewright export graph:support -o support.yaml
+noewright verify support.yaml
+noewright import support.yaml --owner tenant-7 --map g=openai-mini --dry-run
+noewright schema
 ```
 
 Set the DSN via `NOEWRIGHT_DSN` (preferred; the pre-rename `LOOM_DSN` is still read as a fallback) or `--dsn-file <path>`; `--dsn <string>`
@@ -689,7 +725,7 @@ noewright/
 │   └── stub/           #   deterministic stub (tests, offline, no API key needed)
 ├── gc/                 # background branch GC worker
 ├── harness/            # TestPlan, VariantMatrix, Assertion DSL, parallel runner
-├── cmd/noewright/       # CLI: migrate, seed, test
+├── cmd/noewright/      # CLI: migrate, seed, test, export, import, verify, schema
 ├── scripts/            # gen-llms-full.sh
 ├── docs/               # design/architecture notes
 └── examples/
@@ -713,8 +749,8 @@ Anthropic SDK's dependencies stay out of Noewright). Both are released from one
 commit on `main`:
 
 ```bash
-make release VERSION=v0.0.3   # checks, bumps generator/anthropic's noewright require, tags
-git push origin main v0.0.3 generator/anthropic/v0.0.3   # the command it prints
+make release VERSION=v0.2.0   # checks, bumps generator/anthropic's noewright require, tags
+git push origin main v0.2.0 generator/anthropic/v0.2.0   # the command it prints
 ```
 
 `generator/anthropic` is only retagged when it changed since its last release;
