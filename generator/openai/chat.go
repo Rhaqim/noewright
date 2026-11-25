@@ -224,14 +224,18 @@ func (g *ChatGenerator) GenerateStream(ctx context.Context, req noewright.Genera
 // -----------------------------------------------------------------------
 
 type chatRequest struct {
-	Model          string         `json:"model"`
-	Messages       []chatMessage  `json:"messages"`
-	Temperature    float64        `json:"temperature,omitempty"`
-	MaxTokens      int            `json:"max_tokens,omitempty"`
-	TopP           float64        `json:"top_p,omitempty"`
-	Stream         bool           `json:"stream,omitempty"`
-	StreamOptions  *streamOptions `json:"stream_options,omitempty"`
-	ResponseFormat *respFormat    `json:"response_format,omitempty"`
+	Model       string        `json:"model"`
+	Messages    []chatMessage `json:"messages"`
+	Temperature float64       `json:"temperature,omitempty"`
+	MaxTokens   int           `json:"max_tokens,omitempty"`
+	TopP        float64       `json:"top_p,omitempty"`
+	// Reasoning models (gpt-5, o-series) take these instead of max_tokens,
+	// and choose how long to think before answering.
+	MaxCompletionTokens int            `json:"max_completion_tokens,omitempty"`
+	ReasoningEffort     string         `json:"reasoning_effort,omitempty"`
+	Stream              bool           `json:"stream,omitempty"`
+	StreamOptions       *streamOptions `json:"stream_options,omitempty"`
+	ResponseFormat      *respFormat    `json:"response_format,omitempty"`
 }
 
 type streamOptions struct {
@@ -261,6 +265,35 @@ type chatResponse struct {
 	} `json:"usage"`
 }
 
+// isReasoningModel reports whether model is an OpenAI reasoning model, which
+// takes reasoning_effort and max_completion_tokens and rejects temperature.
+func isReasoningModel(model string) bool {
+	m := strings.ToLower(model)
+	for _, p := range []string{"gpt-5", "o1", "o3", "o4"} {
+		if strings.HasPrefix(m, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// reasoningEffort maps Noewright's effort levels (Params.Extra["effort"], the
+// same values the Anthropic adapter accepts) to OpenAI's reasoning_effort.
+// Unknown values are left unset, keeping the model's default.
+func reasoningEffort(effort string) string {
+	switch strings.ToLower(effort) {
+	case "none", "minimal":
+		return "minimal"
+	case "low":
+		return "low"
+	case "medium":
+		return "medium"
+	case "high", "xhigh", "max":
+		return "high"
+	}
+	return ""
+}
+
 func (g *ChatGenerator) buildBody(req noewright.GenerateRequest, stream bool) ([]byte, error) {
 	var msgs []chatMessage
 	if req.SystemPrompt != "" {
@@ -279,6 +312,16 @@ func (g *ChatGenerator) buildBody(req noewright.GenerateRequest, stream bool) ([
 	}
 	if stream {
 		cr.StreamOptions = &streamOptions{IncludeUsage: true}
+	}
+	if isReasoningModel(cr.Model) {
+		// Reasoning models reject max_tokens and any sampling settings other
+		// than the defaults. MaxTokens becomes max_completion_tokens, which
+		// counts reasoning tokens too, so leave room for them.
+		cr.MaxCompletionTokens, cr.MaxTokens = cr.MaxTokens, 0
+		cr.Temperature, cr.TopP = 0, 0
+		if e, ok := req.Params.Extra["effort"].(string); ok {
+			cr.ReasoningEffort = reasoningEffort(e)
+		}
 	}
 	if req.ResponseFormat != nil {
 		// Empty schema → portable JSON mode (works across most OpenAI-compatible

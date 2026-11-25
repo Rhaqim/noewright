@@ -140,3 +140,37 @@ func TestVerify(t *testing.T) {
 		t.Fatalf("unknown model: err = %v, want a not-found error", err)
 	}
 }
+
+// Reasoning models get effort as reasoning_effort, max_completion_tokens in
+// place of max_tokens, and no sampling settings; other models are unchanged.
+func TestReasoningModelBody(t *testing.T) {
+	req := noewright.GenerateRequest{UserPrompt: "hi", Params: noewright.GenerateParams{
+		Temperature: 0.3, TopP: 0.9, MaxTokens: 400, Extra: map[string]any{"effort": "low"}}}
+	for _, tc := range []struct {
+		model string
+		want  map[string]any
+		gone  []string
+	}{
+		{"gpt-5-mini", map[string]any{"reasoning_effort": "low", "max_completion_tokens": float64(400)}, []string{"max_tokens", "temperature", "top_p"}},
+		{"o4-mini", map[string]any{"reasoning_effort": "low"}, []string{"temperature"}},
+		{"gpt-4o", map[string]any{"max_tokens": float64(400), "temperature": 0.3}, []string{"reasoning_effort", "max_completion_tokens"}},
+	} {
+		g := NewChatGenerator("k", tc.model)
+		body, err := g.buildBody(req, false)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var got map[string]any
+		_ = json.Unmarshal(body, &got)
+		for k, v := range tc.want {
+			if got[k] != v {
+				t.Errorf("%s: %s = %v, want %v", tc.model, k, got[k], v)
+			}
+		}
+		for _, k := range tc.gone {
+			if _, ok := got[k]; ok {
+				t.Errorf("%s: %s should not be sent", tc.model, k)
+			}
+		}
+	}
+}
