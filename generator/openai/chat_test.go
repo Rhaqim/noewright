@@ -174,3 +174,20 @@ func TestReasoningModelBody(t *testing.T) {
 		}
 	}
 }
+
+// A reasoning model's hidden reasoning tokens land in the result's metadata.
+func TestReasoningTokensRecorded(t *testing.T) {
+	g := NewChatGenerator("k", "gpt-5")
+	r, err := g.parseResponse([]byte(`{"choices":[{"message":{"content":"ok"},"finish_reason":"stop"}],
+		"usage":{"prompt_tokens":10,"completion_tokens":900,"completion_tokens_details":{"reasoning_tokens":850}}}`), noewright.GenerateRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := r.Metadata()["reasoning_tokens"]; got != 850 {
+		t.Fatalf("reasoning_tokens = %v, want 850", got)
+	}
+	r, _ = g.parseResponse([]byte(`{"choices":[{"message":{"content":"ok"}}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`), noewright.GenerateRequest{})
+	if _, ok := r.Metadata()["reasoning_tokens"]; ok {
+		t.Fatal("reasoning_tokens should be absent when the model reports none")
+	}
+}
