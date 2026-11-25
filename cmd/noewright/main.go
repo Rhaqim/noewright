@@ -32,7 +32,7 @@ func main() {
 	root.PersistentFlags().String("dsn", "", "PostgreSQL connection string. WARNING: visible to other users via 'ps'/'/proc'; prefer NOEWRIGHT_DSN or --dsn-file")
 	root.PersistentFlags().String("dsn-file", "", "path to a file containing the PostgreSQL connection string (keeps credentials out of the process arguments)")
 
-	root.AddCommand(migrateCmd(), seedCmd(), testCmd())
+	root.AddCommand(migrateCmd(), seedCmd(), testCmd(), exportCmd(), importCmd(), verifyCmd(), schemaCmd())
 
 	if err := root.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -148,10 +148,17 @@ func seedCmd() *cobra.Command {
 
 func testCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "test <plan.yaml>",
-		Short: "Run a YAML test plan against the engine",
-		Args:  cobra.ExactArgs(1),
+		Use:   "test <plan.yaml | bundle.yaml>",
+		Short: "Run a YAML test plan, or a bundle's tests",
+		Long: "Given a test plan, runs it against the database. Given a bundle, runs the bundle's tests offline\n" +
+			"in a throwaway in-memory database with every generator mapped to the echo generator: that checks\n" +
+			"routing, waits and templates without spending anything. Model output is checked by running\n" +
+			"Bundles().Test in your app, with its real generators and functions.",
+		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if isBundleFile(args[0]) {
+				return testBundle(cmd, args[0])
+			}
 			db, err := openDB(cmd)
 			if err != nil {
 				return err

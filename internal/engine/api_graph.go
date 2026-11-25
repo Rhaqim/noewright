@@ -1,0 +1,324 @@
+package engine
+
+// api_graph.go — graphs: agents, Go functions and Evaluator decisions joined
+// by edges that can branch, fan out and join again.
+//
+// A Flow is a graph with a fixed shape (a lead, then follower layers) and
+// RunTurn runs it on the same executor. A Graph lifts the shape restriction:
+// any node can feed one or more nodes, edges can carry conditions, and branches
+// that started in a run are joined again before a node they all lead to runs.
+
+import (
+	"context"
+
+	"github.com/google/uuid"
+)
+
+// GraphNodeKind names what a graph node does.
+type GraphNodeKind string
+
+const (
+	// NodeAgent runs an agent and records a step.
+	NodeAgent GraphNodeKind = "agent"
+	// NodeFunc calls a Go function registered with Engine.RegisterFunc. It
+	// records a step only when GraphNode.Record names an agent to attribute it to.
+	NodeFunc GraphNodeKind = "func"
+	// NodeDecide asks the Evaluator one question and emits the answer as the
+	// node's route value. It records no step.
+	NodeDecide GraphNodeKind = "decide"
+	// NodeWait pauses the run until the next RunGraph call brings an Action.
+	// The person's input becomes the node's output, and is recorded as a step
+	// only when GraphWait.Record names an agent to attribute it to.
+	NodeWait GraphNodeKind = "wait"
+)
+
+// Graph is a set of nodes joined by edges, run with Engine.RunGraph.
+//
+// Edges come from two places. Control edges are written in Edges; they start
+// nodes and carry routing. Data edges are inferred: when an agent node's user
+// template declares a variable (Prompt.Variables) that another node produces
+// under its output key, the consumer runs after the producer. Data edges order
+// nodes but never start one.
+//
+// A node runs once at least one control edge into it has fired and every edge
+// into it is settled — fired, or dead because its source finished without
+// firing it or never ran. So a node several branches lead to waits for the
+// branches that actually started in this run, and no longer.
+type Graph struct {
+	Slug  string `json:"slug,omitempty" yaml:"slug,omitempty"`
+	Entry string `json:"entry,omitempty" yaml:"entry,omitempty"` // id of the entry node
+	// Inputs names the inputs a caller supplies at run time (GraphRequest.Inputs),
+	// as opposed to outputs produced inside the graph. "action" is always
+	// available. Validate treats these as satisfied.
+	Inputs []string `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	// Vars declares how a session var written by more than one node is combined.
+	// A var with no entry is replaced by the last write. Validate refuses a
+	// graph where two nodes that can run in parallel Save the same undeclared
+	// var.
+	Vars  map[string]GraphVar `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Nodes []GraphNode         `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+	Edges []GraphEdge         `json:"edges,omitempty" yaml:"edges,omitempty"`
+}
+
+// Reducer combines a new value into a session var.
+type Reducer string
+
+const (
+	// ReduceReplace overwrites the var (the default).
+	ReduceReplace Reducer = "replace"
+	// ReduceAppend appends to a list, creating it if absent.
+	ReduceAppend Reducer = "append"
+	// ReduceMerge merges a map's keys into the var's map.
+	ReduceMerge Reducer = "merge"
+	// ReduceSum adds a number to the var.
+	ReduceSum Reducer = "sum"
+)
+
+// GraphVar declares a session var's reducer.
+type GraphVar struct {
+	Reducer Reducer `json:"reducer,omitempty" yaml:"reducer,omitempty"`
+}
+
+// GraphNode is one node of a Graph. Set the fields for its Kind.
+type GraphNode struct {
+	ID   string        `json:"id,omitempty" yaml:"id,omitempty"`
+	Kind GraphNodeKind `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Agent configures a NodeAgent: the agent, its output key, whether it
+	// streams, its params, overrides, retry policy and own inputs, exactly as
+	// for a turn's agents. Agent.When is not used in graphs; route with edge
+	// conditions instead.
+	Agent *FlowAgent `json:"agent,omitempty" yaml:"agent,omitempty"`
+
+	// Func names the registered function a NodeFunc calls.
+	Func string `json:"func,omitempty" yaml:"func,omitempty"`
+	// Record, on a NodeFunc, saves the function's output as a step attributed
+	// to this agent slug (Owner-scoped, latest version), the way RecordStep
+	// does. Empty records no step.
+	Record string `json:"record,omitempty" yaml:"record,omitempty"`
+
+	// Decide configures a NodeDecide.
+	Decide *GraphDecision `json:"decide,omitempty" yaml:"decide,omitempty"`
+
+	// Wait configures a NodeWait.
+	Wait *GraphWait `json:"wait,omitempty" yaml:"wait,omitempty"`
+
+	// MaxVisits caps how many times the node may run in one session's use of
+	// the graph (across resumed runs). 0 = no cap. A node over its cap fails.
+	MaxVisits int `json:"max_visits,omitempty" yaml:"max_visits,omitempty"`
+
+	// OutputKey names the input a NodeFunc or NodeDecide output is exposed under
+	// to later nodes. A NodeAgent uses Agent.OutputKey.
+	OutputKey string `json:"output,omitempty" yaml:"output,omitempty"`
+
+	// Save assigns session vars from expressions once the node succeeds:
+	// var name → expression. The value is combined through the var's reducer.
+	Save map[string]string `json:"save,omitempty" yaml:"save,omitempty"`
+
+	// Required makes a failure of this node fail the whole run. Otherwise a
+	// failure ends the node's own branch, unless an OnError edge leaves it or
+	// Continue is set.
+	Required bool `json:"required,omitempty" yaml:"required,omitempty"`
+	// Continue evaluates the node's ordinary edges even when it fails, so its
+	// consumers still run and see its output missing.
+	Continue bool `json:"continue,omitempty" yaml:"continue,omitempty"`
+}
+
+// GraphDecision is the question a NodeDecide asks.
+type GraphDecision struct {
+	// Question is an Evaluator question, built with EvalChoice, EvalNoul or
+	// EvalScore. It is asked under the node's ID.
+	Question EvalQuestion `json:"question,omitempty" yaml:"question,omitempty"`
+	// Over names the input whose text is evaluated, usually an earlier node's
+	// output key. Empty evaluates the action text.
+	Over string `json:"over,omitempty" yaml:"over,omitempty"`
+}
+
+// WaitExpect says what input a NodeWait accepts.
+type WaitExpect string
+
+const (
+	// ExpectAny accepts any action. Its text, if any, is the node's output.
+	ExpectAny WaitExpect = "any"
+	// ExpectText accepts free text, matching Pattern when one is set.
+	ExpectText WaitExpect = "text"
+	// ExpectChoice accepts one of Options: an ActionSelect (by option_id or
+	// option_index), or free text equal to an option. The option is the node's
+	// output and its route value.
+	ExpectChoice WaitExpect = "choice"
+)
+
+// GraphWait configures a NodeWait.
+type GraphWait struct {
+	Expect  WaitExpect `json:"expect,omitempty" yaml:"expect,omitempty"`   // "" = ExpectAny
+	Options []string   `json:"options,omitempty" yaml:"options,omitempty"` // for ExpectChoice
+	Pattern string     `json:"pattern,omitempty" yaml:"pattern,omitempty"` // regular expression free text must match (ExpectText)
+	// Prompt is shown to whoever the run waits for; RunGraph returns it on
+	// GraphRun.Prompt. It is a hint for the caller's UI, not sent to any model.
+	Prompt string `json:"prompt,omitempty" yaml:"prompt,omitempty"`
+	// Record, when set, saves the person's input as a step attributed to this
+	// agent slug, with the Action recorded on it — a human-written turn.
+	Record string `json:"record,omitempty" yaml:"record,omitempty"`
+}
+
+// GraphCursor is where a session stands in a graph between runs: the wait
+// node it is paused at and what the run had produced. It is engine-owned
+// session state, checkpointed with the run's last step so Fork resumes there.
+type GraphCursor struct {
+	Graph   string         // graph slug
+	Version int            // saved graph version, 0 for an in-code graph
+	Node    string         // the wait node
+	Inputs  map[string]any // the run's inputs and outputs when it paused
+	Visits  map[string]int // node runs so far, for MaxVisits and expressions
+}
+
+// GraphEdge joins one node to one or more nodes. At most one of Route, When,
+// Uncertain, Default and OnError may be set; with none the edge always fires.
+//
+// When a node settles, every matching edge fires, so several edges can fire at
+// once. Default fires when no other edge from the node did. When an Uncertain
+// edge fires, the node's Route edges do not.
+type GraphEdge struct {
+	From string   `json:"from,omitempty" yaml:"from,omitempty"`
+	To   []string `json:"to,omitempty" yaml:"to,omitempty"`
+	// Route fires when the node's route value equals it. A NodeDecide emits the
+	// chosen option (Choice), "yes" or "no" (Noul), or the level index (Score);
+	// a NodeFunc emits FuncResult.Route.
+	Route string `json:"route,omitempty" yaml:"route,omitempty"`
+	// When fires when the expression is true. See the expression environment
+	// on GraphRun.
+	When string `json:"when,omitempty" yaml:"when,omitempty"`
+	// Uncertain, on an edge from a NodeDecide, fires when the answer's
+	// certainty is below this value (0..1).
+	Uncertain float64 `json:"uncertain,omitempty" yaml:"uncertain,omitempty"`
+	// Default fires when no other edge from the node fired.
+	Default bool `json:"default,omitempty" yaml:"default,omitempty"`
+	// OnError fires when the node failed.
+	OnError bool `json:"on_error,omitempty" yaml:"on_error,omitempty"`
+}
+
+// GraphFunc is a Go function a NodeFunc calls. It must be safe to call
+// concurrently: parallel branches may call it at the same time.
+type GraphFunc func(ctx context.Context, call FuncCall) (FuncResult, error)
+
+// FuncCall is what a GraphFunc receives.
+type FuncCall struct {
+	Node   string         // the node being run
+	Inputs map[string]any // this node's own copy of the run inputs
+	Vars   map[string]any // a snapshot of the session vars
+	// Snapshot is a copy of the session's opaque application state
+	// (State.Snapshot), taken when the function starts — where an app keeps
+	// its own state, such as a game's character sheets.
+	Snapshot []byte
+	// Session is the session the run belongs to. Treat it as read-only; change
+	// vars through FuncResult.Vars so reducers apply.
+	Session *Session
+}
+
+// FuncResult is what a GraphFunc returns.
+type FuncResult struct {
+	// Text is the function's output, exposed under the node's output key.
+	Text string
+	// Data, when set, makes the output structured: later nodes read its fields
+	// as data.<OutputKey>.<field> in expressions.
+	Data map[string]any
+	// Route is the route value the node's edges can match.
+	Route string
+	// Vars are written to the session through each var's reducer.
+	Vars map[string]any
+}
+
+// GraphRequest is the input to RunGraph.
+type GraphRequest struct {
+	Graph Graph
+	// Owner scopes every agent lookup in the run, as TurnRequest.Owner does.
+	Owner string
+	// Action is the user input driving the run. It is recorded on the entry
+	// node's step when the entry is an agent, and its text is available to
+	// every node as the "action" input.
+	Action *Action
+	// Inputs seed the run's inputs, available to every node.
+	Inputs map[string]any
+	// Params and Overrides apply to every agent node, under each node's own.
+	Params    map[string]any
+	Overrides map[string]any
+	// GeneratorOverride routes every agent node that sets no GeneratorOverride
+	// of its own to this registered generator for this run — the model a user
+	// picked, say, or a simulator.
+	GeneratorOverride string
+	// OnChunk receives the chunks of every agent node that streams.
+	OnChunk func(node string, c Chunk)
+	// OnNode receives each node's progress. It is called from the node's own
+	// goroutine and must not block.
+	OnNode func(ev NodeEvent)
+	// Restart discards a cursor the session holds (for this graph or another)
+	// and runs from the entry. Without it, a session paused in this graph
+	// resumes at its wait node, and one paused in a different graph is refused
+	// with ErrGraphMismatch.
+	Restart bool
+
+	graphVersion int // set by RunGraphBySlug, stored on the cursor
+}
+
+// NodeEventKind names a NodeEvent.
+type NodeEventKind string
+
+const (
+	NodeStarted NodeEventKind = "started"
+	NodeDone    NodeEventKind = "done"
+	NodeFailed  NodeEventKind = "failed"
+	// NodeSkipped: no edge into the node fired, so it did not run.
+	NodeSkipped NodeEventKind = "skipped"
+)
+
+// NodeEvent is one node's progress in a run.
+type NodeEvent struct {
+	Node  string
+	Kind  NodeEventKind
+	Step  *Step  // the recorded step, when the node recorded one
+	Text  string // the node's output text, on NodeDone
+	Route string // the node's route value, on NodeDone
+	Err   error  // on NodeFailed
+}
+
+// GraphHop is one edge a run took.
+type GraphHop struct {
+	From, To string
+	// Reason says why the edge fired: "" (unconditional), "route", "when",
+	// "uncertain", "default" or "error".
+	Reason string
+}
+
+// GraphRun is the result of RunGraph.
+//
+// Expressions in edges and Save mappings see:
+//
+//	inputs   run inputs and every output produced so far, by key
+//	data     structured outputs by key (data.Ticket.priority)
+//	vars     the session vars
+//	eval     decision results by node id: label, p, certainty, noul, score,
+//	         probabilities
+//	run      errors: node id → error message, for nodes failed so far
+//	visits   node id → how many times it has run in this session's use of
+//	         the graph, resumed runs included
+type GraphRun struct {
+	ID      uuid.UUID
+	Steps   []*Step          // recorded steps, in completion order
+	Nodes   map[string]*Step // by node id, nodes that recorded a step
+	Outputs map[string]any   // every input and output key at the end of the run
+	Errors  map[string]error // by node id
+	Skipped []string         // nodes no edge reached
+	// Ran lists every node that ran in this call — succeeded or failed, steps
+	// or not — in the order they finished.
+	Ran      []string
+	Path     []GraphHop // every edge taken, in the order taken
+	Messages []Message  // everything published on the run's bus
+	// Resumed names the wait node this run resumed from ("" = it started at
+	// the entry). Waiting names the wait node it paused at ("" = it finished),
+	// and Prompt is that node's GraphWait.Prompt.
+	Resumed, Waiting, Prompt string
+	// Cost totals the cost rows of the run's steps. Recorded steps (functions
+	// with Record) have none. PricingConfigured is false when any row was priced
+	// from the placeholder rate: show the USD as unknown then.
+	Cost UsageSummary
+}

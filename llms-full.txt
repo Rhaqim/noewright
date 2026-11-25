@@ -164,6 +164,172 @@ for slug, ferr := range turn.Errors {  // follower failures (never returned as e
 }
 ```
 
+## Graphs (RunGraph): branch, fan out, join, call Go code
+
+A turn has a fixed shape. A `Graph` does not: any node can feed one or more
+nodes, edges can carry conditions, and branches join again. `RunTurn` runs on
+the same executor, so everything above (sessions, steps, cost, hooks, budgets,
+forks) works unchanged inside a graph.
+
+Node kinds:
+
+- `NodeAgent` runs an agent (`Agent: &FlowAgent{...}`) and records a step.
+- `NodeFunc` calls a Go function registered with `e.RegisterFunc(name, fn)`. It
+  records a step only with `Record: "<agent slug>"`, like `RecordStep`.
+- `NodeDecide` asks the Evaluator one question about an input and emits the
+  answer as the node's route value (Choice: the option; Noul: "yes"/"no";
+  Score: the level).
+
+Edges (`GraphEdge`): no trigger fires always; `Route` matches the route value;
+`When` is an [expr](https://github.com/expr-lang/expr) condition; `Uncertain`
+fires when a decision's certainty is below the threshold (and then route edges
+do not); `Default` fires when nothing else did; `OnError` fires when the node
+failed. Data edges are inferred from template variables, as in flows: a node
+that reads `{{.Inputs.X}}` runs after the node producing `X`. A node runs once
+every branch into it that started in this run has finished.
+
+```go
+e.RegisterFunc("roll-dice", func(ctx context.Context, c noewright.FuncCall) (noewright.FuncResult, error) {
+    return noewright.FuncResult{Text: "d20=17"}, nil
+})
+
+run, err := e.RunGraph(ctx, sess, noewright.GraphRequest{
+    Graph: noewright.Graph{
+        Slug: "tabletop-round", Entry: "start",
+        Nodes: []noewright.GraphNode{
+            {ID: "start", Kind: noewright.NodeFunc, Func: "start"},
+            {ID: "rules", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-rules", OutputKey: "Rules"}},
+            {ID: "roll", Kind: noewright.NodeFunc, Func: "roll-dice", OutputKey: "Rolls"},
+            {ID: "gm", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-gm", OutputKey: "Narration", Stream: true}},
+            {ID: "referee", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-referee"}},
+            {ID: "chronicler", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "tt-chronicler"}},
+        },
+        Edges: []noewright.GraphEdge{
+            {From: "start", To: []string{"rules"}, When: "vars.round > 0"},
+            {From: "start", To: []string{"gm"}, Default: true}, // opening round skips the dice
+            {From: "rules", To: []string{"roll"}},
+            {From: "roll", To: []string{"gm"}},
+            {From: "gm", To: []string{"referee", "chronicler"}}, // in parallel
+        },
+    },
+    Action:  action,
+    OnChunk: func(node string, c noewright.Chunk) { fmt.Print(c.Content) },
+})
+// run.Nodes["gm"], run.Outputs["Narration"], run.Skipped, run.Path, run.Errors
+```
+
+Expressions see `inputs` (run inputs and outputs by key), `data` (structured
+outputs: `data.Ticket.priority`), `vars` (session vars), `eval` (decisions by
+node id: `eval.intent.label`, `.p`, `.certainty`) and `run.errors`. A node's
+`Save: map[string]string{"var": "expr"}` writes session vars; declare
+`Graph.Vars["var"] = GraphVar{Reducer: ReduceAppend}` (or merge, sum) when
+several nodes write one var.
+
+Failures end the node's own branch unless an `OnError` edge leaves it, the
+node sets `Continue`, or it is `Required` (which fails the run). A graph that
+cannot run is refused with `ErrInvalidGraph` before anything runs.
+
+### Waiting for a person (NodeWait)
+
+A `NodeWait` pauses the run until the next `RunGraph` call brings an `Action`.
+An edge into a wait node pauses the run there; the run returns with
+`run.Waiting` (the node) and `run.Prompt`. The session stores a cursor
+(`State.Graph`: the node, the run's inputs and outputs so far, visit counts),
+and the checkpoint of the run's last step carries it, so `Fork` at that step
+resumes at the wait.
+
+```go
+{ID: "clarify", Kind: noewright.NodeWait, OutputKey: "Answer", Wait: &noewright.GraphWait{
+    Expect: noewright.ExpectText,        // or ExpectChoice with Options, or ExpectAny
+    Prompt: "Refund or bug report?",
+    Record: "",                          // an agent slug records the input as a step (a human GM)
+}},
+// edges: {From: "intent", Uncertain: 0.6, To: []string{"clarify"}}, {From: "clarify", To: []string{"intent"}}
+
+run, _ := e.RunGraph(ctx, sess, req)            // run.Waiting == "clarify"
+run, err = e.RunGraph(ctx, sess, noewright.GraphRequest{Graph: g, Action: answer}) // resumes at clarify
+```
+
+- A loop must pass through a wait node; other cycles are refused.
+- An input the wait does not accept returns `ErrWaitInput` and changes nothing.
+- A session paused in another graph returns `ErrGraphMismatch`; set
+  `GraphRequest.Restart` to abandon the pause.
+- `RunGraphBySlug` resumes on the version the session paused in, so publishing a
+  new version never moves someone mid-run.
+- `GraphNode.MaxVisits` caps how often a node runs; expressions read `visits`.
+- Calls on one session are serialised.
+
+Saved graphs work like flows: `e.Graphs().Create` (version >= 1, `IsActive`
+drafts), `Get` (version 0 = latest active), `SetActive` (publish / rollback),
+`Validate` (registry checks, including parallel saves without a reducer),
+`Plan` (nodes, edges, problems and per-agent cost estimates for a visual
+editor) and `e.RunGraphBySlug`. A saved graph refuses `Agent.Overrides`: they
+carry API keys, so pass them on `GraphRequest.Overrides`.
+
+## Bundles: move a configuration between databases
+
+A bundle is one YAML file with prompts, response formats, agents, flows and
+graphs. Records refer to each other as `slug@version`; the owner, secrets and
+code stay behind. `requires` lists the generators (mapped to local ones on
+import), the Go functions the importing app must register, and whether an
+Evaluator is needed. A `sha256` digest catches edits and damage.
+
+```go
+b, _ := e.Bundles().Export(ctx, owner,
+    noewright.BundleRoot{Kind: "graph", Slug: "support"},   // version 0 = active
+    noewright.BundleRoot{Kind: "flow", Slug: "triage-turn", Version: 2})
+data, _ := b.Marshal()                                       // YAML with the digest set
+
+b, err := noewright.ParseBundle(data)                        // checks format and digest
+rep, err := other.Bundles().Import(ctx, b, noewright.ImportOptions{
+    Owner:      "tenant-7",
+    Generators: map[string]string{"g": "openai-mini"},     // bundle slug → local slug
+    OnConflict: noewright.ConflictFail,                      // or ConflictBump
+    Activate:   true,                                        // else flows/graphs arrive as drafts
+    DryRun:     false,
+})
+// rep.Items: create | skip | conflict | bump (NewVersion) per record
+problems := other.Bundles().Verify(ctx, b, opts)             // run at app startup
+```
+
+Import is idempotent: identical records are skipped, so importing the same file
+twice writes nothing. A record that differs fails the import with
+`ErrBundleConflict` (nothing written) unless `ConflictBump` imports it as the
+next free version and rewrites the bundle's references to it. Everything is
+written in one transaction. `noewright.BundleSchema()` returns the JSON Schema
+for the file.
+
+### Tests and evidence in a bundle
+
+A bundle can carry `tests`: scripted runs of its graphs, one `RunGraph` call per
+step, each checked against `expect` (`waiting: <node>` or `waiting: done`,
+`ran`, `skipped`, `contains`, `max_length`, `no_errors`).
+
+```yaml
+tests:
+  - name: refund happy path
+    graph: support@1
+    steps:
+      - {say: "money back", expect: {waiting: confirm, ran: [intake, intent]}}
+      - {select: "yes", expect: {waiting: done, contains: {refund: "REFUND"}, no_errors: true}}
+```
+
+Run them in your app, where the real generators and functions are registered:
+`results, _ := e.Bundles().Test(ctx, b, noewright.BundleTestOptions{Owner: owner})`.
+`b.SetEvidence(results)` stores the results (pass/fail, failures, cost, a hash
+of each node's output) as `evidence`, which the digest does not cover. On a
+re-run, `results[i].Changed` lists outputs whose hash differs from the evidence:
+reported, not failed, because model output varies. `GraphRun.Ran` lists every
+node that ran in a call, functions and decisions included.
+
+`noewright test bundle.yaml` runs a bundle's tests offline against the echo
+generator (routing, waits and templates, at no cost); bundles that need app
+functions or an Evaluator must use `Bundles().Test` instead.
+
+CLI: `noewright export graph:support flow:triage-turn@2 -o support.yaml`,
+`noewright import support.yaml --owner tenant-7 --map g=openai-mini --dry-run`,
+`noewright verify support.yaml` (no database needed), `noewright schema`.
+
 ## Shared sessions: participants, human steps, live events
 
 For a session several people share (a multiplayer game):
@@ -855,6 +1021,9 @@ code should depend on that facade, never on this package directly.
 
 CONSTANTS
 
+const BundleFormat = "bundle/v1"
+    BundleFormat is the format version this engine writes and reads.
+
 const EvalChoiceType = evaluator.TypeChoice
     EvalChoiceType picks one option from a named set.
 
@@ -884,6 +1053,11 @@ const TopicAll = "*"
 
 VARIABLES
 
+var ErrBundleConflict = errors.New("noewright: bundle conflicts with existing records")
+    ErrBundleConflict is returned by Import when the target already holds a
+    record under the same slug and version with different content, and the
+    import's OnConflict is ConflictFail. Nothing is written.
+
 var ErrDuplicateSlug = errors.New("noewright: duplicate slug+version")
     ErrDuplicateSlug is returned when an agent or prompt slug+version already
     exists.
@@ -908,9 +1082,22 @@ var ErrGeneratorNotRegistered = errors.New("noewright: generator not registered"
     slug that was never registered with the engine. Wrapped errors name the
     slug.
 
+var ErrGraphMismatch = errors.New("noewright: session is paused in a different graph")
+    ErrGraphMismatch is returned when RunGraph is called for one graph on a
+    session paused in another. Set GraphRequest.Restart to abandon the pause.
+
+var ErrInvalidBundle = errors.New("noewright: invalid bundle")
+    ErrInvalidBundle is returned for a bundle that cannot be read or imported as
+    written: an unknown format, a digest that does not match, a reference to a
+    record the bundle does not contain, or a record that fails its own checks.
+
 var ErrInvalidConfig = errors.New("noewright: invalid config")
     ErrInvalidConfig is returned by New when the Config is missing a required
     field or is otherwise unusable. Wrapped errors carry the specific reason.
+
+var ErrInvalidGraph = errors.New("noewright: invalid graph")
+    ErrInvalidGraph is returned when a graph cannot run as written. The wrapped
+    error names the problem.
 
 var ErrKeyRejected = errors.New("noewright: provider rejected the API key")
     ErrKeyRejected is wrapped by Verifier.Verify when the provider rejects the
@@ -977,6 +1164,11 @@ var ErrVerifyNotSupported = errors.New("noewright: generator does not support ke
     ErrVerifyNotSupported is returned by Engine.VerifyGenerator for a generator
     that does not implement Verifier.
 
+var ErrWaitInput = errors.New("noewright: input not accepted by the wait node")
+    ErrWaitInput is returned when a paused run is resumed without an Action,
+    or with one its wait node does not accept. Nothing changes: the session
+    stays paused at the same node, so the caller can ask again.
+
 var EvalChoice = evaluator.Choice
     EvalChoice builds a question that picks one option from a map of option name
     to description. EXPERIMENTAL.
@@ -1003,6 +1195,10 @@ var EvalScoreOf = evaluator.ScoreOf
 
 
 FUNCTIONS
+
+func BundleSchema() []byte
+    BundleSchema returns the JSON Schema for bundle files, for editors and other
+    tools that check a bundle as it is written.
 
 func ErrRetryScored(ann RetryAnnotation, score int, draft Result) error
     ErrRetryScored is ErrRetryWith plus a score for the rejected draft and the
@@ -1323,6 +1519,243 @@ const (
 	BudgetWindowMonth    BudgetWindow = "month"
 	BudgetWindowLifetime BudgetWindow = "lifetime"
 )
+type Bundle struct {
+	Format    string `json:"noewright" yaml:"noewright"`
+	Name      string `json:"name,omitempty" yaml:"name,omitempty"`
+	CreatedBy string `json:"created_by,omitempty" yaml:"created_by,omitempty"`
+	CreatedAt string `json:"created_at,omitempty" yaml:"created_at,omitempty"`
+
+	Requires        BundleRequires         `json:"requires" yaml:"requires"`
+	ResponseFormats []BundleResponseFormat `json:"response_formats,omitempty" yaml:"response_formats,omitempty"`
+	Prompts         []BundlePrompt         `json:"prompts,omitempty" yaml:"prompts,omitempty"`
+	Agents          []BundleAgent          `json:"agents,omitempty" yaml:"agents,omitempty"`
+	Flows           []BundleFlow           `json:"flows,omitempty" yaml:"flows,omitempty"`
+	Graphs          []BundleGraph          `json:"graphs,omitempty" yaml:"graphs,omitempty"`
+	// Tests are scripted runs of the bundle's graphs, run with Bundles().Test.
+	Tests []BundleTest `json:"tests,omitempty" yaml:"tests,omitempty"`
+	// Evidence is what the tests produced the last time they ran where the
+	// bundle was made. It is not part of the digest, so recording it does not
+	// make the file look edited.
+	Evidence []BundleEvidence `json:"evidence,omitempty" yaml:"evidence,omitempty"`
+
+	// Digest is "sha256:<hex>" over the canonical JSON of every field above
+	// except Evidence.
+	// ParseBundle refuses a bundle whose digest does not match; an empty digest
+	// (a hand-written file) is accepted.
+	Digest string `json:"digest,omitempty" yaml:"digest,omitempty"`
+}
+    Bundle is a portable configuration. Marshal writes it as YAML; ParseBundle
+    reads YAML or JSON.
+
+func ParseBundle(data []byte) (*Bundle, error)
+    ParseBundle reads a bundle from YAML or JSON, checks its format version,
+    and checks its digest when it has one.
+
+func (b *Bundle) ComputeDigest() (string, error)
+    ComputeDigest returns the digest of the bundle's content: everything except
+    the Digest field itself.
+
+func (b *Bundle) Marshal() ([]byte, error)
+    Marshal sets the bundle's digest and returns it as YAML.
+
+func (b *Bundle) SetEvidence(results []BundleTestResult)
+    SetEvidence replaces the bundle's evidence with these results. Marshal the
+    bundle afterwards to write it; the digest does not cover evidence.
+
+type BundleAgent struct {
+	Slug      string   `json:"slug" yaml:"slug"`
+	Version   int      `json:"version" yaml:"version"`
+	Category  string   `json:"category,omitempty" yaml:"category,omitempty"`
+	Modality  Modality `json:"modality" yaml:"modality"`
+	Generator string   `json:"generator" yaml:"generator"`
+
+	SystemPrompt   string `json:"system_prompt,omitempty" yaml:"system_prompt,omitempty"`
+	UserTemplate   string `json:"user_template,omitempty" yaml:"user_template,omitempty"`
+	ResponseFormat string `json:"response_format,omitempty" yaml:"response_format,omitempty"`
+	// InlineResponseFormat is an agent's own format, when it uses no saved one.
+	InlineResponseFormat *ResponseFormat `json:"inline_response_format,omitempty" yaml:"inline_response_format,omitempty"`
+	Params               GenerateParams  `json:"params,omitzero" yaml:"params,omitempty"`
+	Fallback             string          `json:"fallback,omitempty" yaml:"fallback,omitempty"`
+}
+    BundleAgent is an agent record. Prompt, format and fallback references are
+    "slug@version".
+
+type BundleEvidence struct {
+	Test   string `json:"test" yaml:"test"`
+	Passed bool   `json:"passed" yaml:"passed"`
+	// Model is the generator the run used (BundleTestOptions.GeneratorOverride),
+	// empty when each agent used its own.
+	Model    string   `json:"model,omitempty" yaml:"model,omitempty"`
+	At       string   `json:"at,omitempty" yaml:"at,omitempty"`
+	Failures []string `json:"failures,omitempty" yaml:"failures,omitempty"`
+	USD      float64  `json:"usd,omitempty" yaml:"usd,omitempty"`
+	Priced   bool     `json:"priced,omitempty" yaml:"priced,omitempty"`
+	// Outputs maps "step<n>.<node>" to the sha256 of that node's output, so a
+	// re-run can say which outputs changed.
+	Outputs map[string]string `json:"outputs,omitempty" yaml:"outputs,omitempty"`
+}
+    BundleEvidence is one test's result where the bundle was made.
+
+type BundleExpect struct {
+	// Waiting is the wait node the run must stop at; "done" means it must
+	// finish without waiting.
+	Waiting string `json:"waiting,omitempty" yaml:"waiting,omitempty"`
+	// Ran and Skipped list nodes that must have run, or must not have.
+	Ran     []string `json:"ran,omitempty" yaml:"ran,omitempty"`
+	Skipped []string `json:"skipped,omitempty" yaml:"skipped,omitempty"`
+	// Contains maps a node to text its output must contain.
+	Contains map[string]string `json:"contains,omitempty" yaml:"contains,omitempty"`
+	// MaxLength maps a node to the longest its output may be, in characters.
+	MaxLength map[string]int `json:"max_length,omitempty" yaml:"max_length,omitempty"`
+	// NoErrors requires the run to record no node errors.
+	NoErrors bool `json:"no_errors,omitempty" yaml:"no_errors,omitempty"`
+}
+    BundleExpect is what a step must produce. Empty fields are not checked.
+
+type BundleFlow struct {
+	Slug     string            `json:"slug" yaml:"slug"`
+	Version  int               `json:"version" yaml:"version"`
+	Category string            `json:"category,omitempty" yaml:"category,omitempty"`
+	Inputs   []string          `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Agents   []BundleFlowAgent `json:"agents" yaml:"agents"`
+}
+    BundleFlow is a flow record.
+
+type BundleFlowAgent struct {
+	Agent             string         `json:"agent" yaml:"agent"`
+	Version           int            `json:"version,omitempty" yaml:"version,omitempty"`
+	Output            string         `json:"output,omitempty" yaml:"output,omitempty"`
+	Stream            bool           `json:"stream,omitempty" yaml:"stream,omitempty"`
+	GeneratorOverride string         `json:"generator_override,omitempty" yaml:"generator_override,omitempty"`
+	Params            map[string]any `json:"params,omitempty" yaml:"params,omitempty"`
+	RetryMode         RetryMode      `json:"retry_mode,omitempty" yaml:"retry_mode,omitempty"`
+	MaxRetries        int            `json:"max_retries,omitempty" yaml:"max_retries,omitempty"`
+}
+    BundleFlowAgent is one agent slot in a flow; the first is the lead.
+
+type BundleGenerator struct {
+	Slug     string   `json:"slug" yaml:"slug"`
+	Modality Modality `json:"modality,omitempty" yaml:"modality,omitempty"`
+}
+    BundleGenerator names a generator a bundle's agents use.
+
+type BundleGraph struct {
+	Slug     string `json:"slug" yaml:"slug"`
+	Version  int    `json:"version" yaml:"version"`
+	Category string `json:"category,omitempty" yaml:"category,omitempty"`
+	Graph    Graph  `json:"graph" yaml:"graph"`
+}
+    BundleGraph is a graph record.
+
+type BundlePrompt struct {
+	Slug      string         `json:"slug" yaml:"slug"`
+	Version   int            `json:"version" yaml:"version"`
+	Kind      PromptKind     `json:"kind" yaml:"kind"`
+	Category  string         `json:"category,omitempty" yaml:"category,omitempty"`
+	Body      string         `json:"body" yaml:"body"`
+	Variables []string       `json:"variables,omitempty" yaml:"variables,omitempty"`
+	Metadata  map[string]any `json:"metadata,omitempty" yaml:"metadata,omitempty"`
+	Notes     string         `json:"notes,omitempty" yaml:"notes,omitempty"`
+}
+    BundlePrompt is a prompt record.
+
+type BundleRegistry interface {
+	// Export starts from roots and follows every reference (sub-records of
+	// graphs and flows, agents' prompts, formats and fallbacks), returning
+	// exactly that set without the owner. Lists are sorted, so the same records
+	// always export to the same bytes.
+	Export(ctx context.Context, owner string, roots ...BundleRoot) (*Bundle, error)
+	// Import plans every record (create, skip, conflict or bump) and writes
+	// them in one transaction, in dependency order. A conflict under
+	// ConflictFail returns ErrBundleConflict with the report and writes nothing.
+	Import(ctx context.Context, b *Bundle, opts ImportOptions) (*ImportReport, error)
+	// Verify lists what the importing system is missing: unregistered
+	// generators and functions, an Evaluator a graph needs, and graphs that
+	// would not run. Empty means ready.
+	Verify(ctx context.Context, b *Bundle, opts ImportOptions) []string
+	// Test runs the bundle's tests against its graphs as imported in
+	// opts.Owner, each in a fresh session, and compares the outputs with the
+	// bundle's evidence. Store the results on the bundle with SetEvidence.
+	Test(ctx context.Context, b *Bundle, opts BundleTestOptions) ([]BundleTestResult, error)
+}
+    BundleRegistry exports and imports bundles.
+
+type BundleRequires struct {
+	// Generators the agents use, by the slug they were registered under where
+	// the bundle was made. ImportOptions.Generators maps them to local slugs.
+	Generators []BundleGenerator `json:"generators,omitempty" yaml:"generators,omitempty"`
+	// Funcs are the Go functions graph func nodes call. The importing app must
+	// register them with Engine.RegisterFunc.
+	Funcs []string `json:"funcs,omitempty" yaml:"funcs,omitempty"`
+	// Evaluator is true when a graph has decide nodes.
+	Evaluator bool `json:"evaluator,omitempty" yaml:"evaluator,omitempty"`
+}
+    BundleRequires is what the importing system must provide.
+
+type BundleResponseFormat struct {
+	Slug     string         `json:"slug" yaml:"slug"`
+	Version  int            `json:"version" yaml:"version"`
+	Category string         `json:"category,omitempty" yaml:"category,omitempty"`
+	Schema   map[string]any `json:"schema,omitempty" yaml:"schema,omitempty"`
+	Strict   bool           `json:"strict,omitempty" yaml:"strict,omitempty"`
+}
+    BundleResponseFormat is a saved response-format record.
+
+type BundleRoot struct {
+	Kind    string
+	Slug    string
+	Version int
+}
+    BundleRoot names a record Export starts from. Kind is "graph", "flow" or
+    "agent"; Version 0 is the latest active graph or flow, or the latest agent.
+
+type BundleTest struct {
+	Name  string `json:"name" yaml:"name"`
+	Graph string `json:"graph" yaml:"graph"` // slug@version
+	// Vars seed the session's vars; Inputs are given to every call.
+	Vars   map[string]any   `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Inputs map[string]any   `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Steps  []BundleTestStep `json:"steps" yaml:"steps"`
+}
+    BundleTest is a scripted run of one graph: a fresh session, then one
+    RunGraph call per step, each checked against its expectations.
+
+type BundleTestOptions struct {
+	// Owner is where the bundle's graphs were imported.
+	Owner string
+	// Only runs the tests with these names; empty runs all.
+	Only []string
+	// Overrides and Params are passed to every run (per-run API keys and the
+	// like, which bundles never carry).
+	Overrides map[string]any
+	Params    map[string]any
+	// GeneratorOverride runs every agent on this registered generator (the
+	// model a user picked), as GraphRequest.GeneratorOverride does. It is
+	// recorded on the evidence as Model.
+	GeneratorOverride string
+}
+    BundleTestOptions control Bundles().Test.
+
+type BundleTestResult struct {
+	Evidence BundleEvidence
+	// Texts maps "step<n>.<node>" to that node's output text, for showing
+	// what ran. The evidence keeps only hashes of these.
+	Texts map[string]string
+	// Changed lists outputs whose hash differs from the bundle's evidence for
+	// this test. Model output varies, so a change is reported, not failed.
+	Changed []string
+}
+    BundleTestResult is one test's outcome.
+
+type BundleTestStep struct {
+	Say    string         `json:"say,omitempty" yaml:"say,omitempty"`
+	Select string         `json:"select,omitempty" yaml:"select,omitempty"`
+	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	Expect BundleExpect   `json:"expect,omitzero" yaml:"expect,omitempty"`
+}
+    BundleTestStep is one call in a test. Say sends free text; Select picks an
+    option of a choice wait; neither sends no action.
+
 type Bus interface {
 	// Publish sends data on a topic to all current and future subscribers.
 	Publish(from, topic string, data any)
@@ -1465,6 +1898,17 @@ type Config struct {
 }
     Config is the top-level engine configuration.
 
+type ConflictPolicy string
+    ConflictPolicy says what Import does when the target holds a different
+    record under the same slug and version.
+
+const (
+	// ConflictFail stops the import; nothing is written. The default.
+	ConflictFail ConflictPolicy = "fail"
+	// ConflictBump imports the record as the next free version and updates the
+	// bundle's references to it.
+	ConflictBump ConflictPolicy = "bump"
+)
 type ConstraintJudge = judge.ConstraintJudge
     ConstraintJudge checks whether an output satisfies a stated rule.
 
@@ -1571,6 +2015,9 @@ func (e *Engine) Agents() AgentRegistry
 func (e *Engine) Budgets() BudgetManager
     Budgets returns the budget manager.
 
+func (e *Engine) Bundles() BundleRegistry
+    Bundles returns the bundle registry.
+
 func (e *Engine) Close(ctx context.Context) error
     Close shuts the engine's background work down and waits for it to finish. It
     stops the async poller and blocks until every in-flight poll has returned,
@@ -1667,6 +2114,9 @@ func (e *Engine) Generators() []string
     RegisterGenerator calls), not any database table — use it to validate an
     agent's GeneratorSlug before saving.
 
+func (e *Engine) Graphs() GraphRegistry
+    Graphs returns the saved-graph registry.
+
 func (e *Engine) Hooks() HookBus
     Hooks returns the engine's hook bus for registering pre/post processors.
 
@@ -1706,6 +2156,10 @@ func (e *Engine) RecordStep(ctx context.Context, session *Session, ext ExternalS
     Errors are those of RunStep, minus generation and budget errors; a post-hook
     that asks for a retry is an error, since there is nothing to re-run.
 
+func (e *Engine) RegisterFunc(name string, fn GraphFunc)
+    RegisterFunc registers a Go function that NodeFunc nodes call by name.
+    Registering a name again replaces the function.
+
 func (e *Engine) RegisterGenerator(slug string, g Generator)
     RegisterGenerator adds or replaces a generator under a slug at runtime.
     This is how a platform extends into a new modality — register a video or
@@ -1718,6 +2172,22 @@ func (e *Engine) RemoveParticipant(ctx context.Context, s *Session, id string) e
 
 func (e *Engine) ResponseFormats() ResponseFormatRegistry
     ResponseFormats returns the response-format registry.
+
+func (e *Engine) RunGraph(ctx context.Context, session *Session, req GraphRequest) (*GraphRun, error)
+    RunGraph runs a graph against a session, from its entry node until nothing
+    is left to run.
+
+    A non-nil error means the graph could not run (ErrInvalidGraph) or a
+    Required node failed; in the second case the partial GraphRun is returned
+    with it. Other node failures are recorded on GraphRun.Errors.
+
+func (e *Engine) RunGraphBySlug(ctx context.Context, session *Session, owner, slug string, version int, req GraphRequest) (*GraphRun, error)
+    RunGraphBySlug loads a saved graph (version 0 = the latest active version)
+    within owner and runs it. req.Graph is ignored; req.Owner is set to owner.
+
+    A session paused in this graph resumes on the version it paused in, not the
+    latest active one, so publishing a new version never moves someone mid-run;
+    pass an explicit version or set Restart to change that.
 
 func (e *Engine) RunStep(ctx context.Context, session *Session, req StepRequest) (*Step, error)
     RunStep executes one step of the generation loop against session.
@@ -2006,36 +2476,36 @@ type Flow struct {
 
 type FlowAgent struct {
 	// AgentSlug + AgentVersion address a registered agent (version 0 = latest).
-	AgentSlug    string
-	AgentVersion int
+	AgentSlug    string `json:"agent,omitempty" yaml:"agent,omitempty"`
+	AgentVersion int    `json:"version,omitempty" yaml:"version,omitempty"`
 	// Stream, on the lead agent only, routes streaming chunks to TurnRequest.OnChunk.
-	Stream bool
+	Stream bool `json:"stream,omitempty" yaml:"stream,omitempty"`
 	// OutputKey is the key under which this agent's text output is exposed to
 	// later agents in the same turn via {{.Inputs.<OutputKey>}}. For the lead it
 	// defaults to "Lead"; for followers it is optional.
-	OutputKey string
+	OutputKey string `json:"output,omitempty" yaml:"output,omitempty"`
 	// Overrides is opaque per-call data forwarded to the generator (e.g. a
 	// per-user api key / model). Optional.
-	Overrides map[string]any
+	Overrides map[string]any `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	// GeneratorOverride routes this agent's call to a different registered
 	// generator for this turn only. Optional.
-	GeneratorOverride string
+	GeneratorOverride string `json:"generator_override,omitempty" yaml:"generator_override,omitempty"`
 	// Params are this agent's tuning knobs (model + domain), merged over the
 	// turn's Params. See StepRequest.Params.
-	Params map[string]any
+	Params map[string]any `json:"params,omitempty" yaml:"params,omitempty"`
 	// RetryMode and MaxRetries override the engine retry defaults for this
 	// agent's step (e.g. a keep-best lead, a discard follower). Zero values
 	// inherit the engine default.
-	RetryMode  RetryMode
-	MaxRetries int
+	RetryMode  RetryMode `json:"retry_mode,omitempty" yaml:"retry_mode,omitempty"`
+	MaxRetries int       `json:"max_retries,omitempty" yaml:"max_retries,omitempty"`
 	// SystemPrompt, when non-zero, is this agent's per-turn system prompt
 	// override (typically PromptRef{Literal: ...} assembled by the embedder).
 	// The zero value leaves the agent's registered system prompt in place.
-	SystemPrompt PromptRef
+	SystemPrompt PromptRef `json:"system_prompt,omitzero" yaml:"system_prompt,omitempty"`
 	// Inputs are merged over the turn's shared Inputs for this agent only, so
 	// each agent can receive its own user_prompt / values while still seeing the
 	// lead's output. Nil leaves the shared Inputs untouched.
-	Inputs map[string]any
+	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
 	// When, on a FOLLOWER, decides whether this agent runs at all this turn. It
 	// is consulted after the lead settles (and, for a layered follower, after
 	// its producers), with the inputs this agent would have received. Returning
@@ -2051,7 +2521,9 @@ type FlowAgent struct {
 	//
 	// EXPERIMENTAL: this field is part of the opt-in evaluator work and may
 	// change shape. It is inert unless set.
-	When func(ctx context.Context, g FollowerGate) (bool, error)
+	//
+	// When is code, so it is never encoded: a saved graph or flow cannot carry it.
+	When func(ctx context.Context, g FollowerGate) (bool, error) `json:"-" yaml:"-"`
 }
     FlowAgent is one agent participating in a turn.
 
@@ -2237,6 +2709,33 @@ type FreeText struct {
 }
     FreeText is the payload for ActionFreeText — a user-typed string.
 
+type FuncCall struct {
+	Node   string         // the node being run
+	Inputs map[string]any // this node's own copy of the run inputs
+	Vars   map[string]any // a snapshot of the session vars
+	// Snapshot is a copy of the session's opaque application state
+	// (State.Snapshot), taken when the function starts — where an app keeps
+	// its own state, such as a game's character sheets.
+	Snapshot []byte
+	// Session is the session the run belongs to. Treat it as read-only; change
+	// vars through FuncResult.Vars so reducers apply.
+	Session *Session
+}
+    FuncCall is what a GraphFunc receives.
+
+type FuncResult struct {
+	// Text is the function's output, exposed under the node's output key.
+	Text string
+	// Data, when set, makes the output structured: later nodes read its fields
+	// as data.<OutputKey>.<field> in expressions.
+	Data map[string]any
+	// Route is the route value the node's edges can match.
+	Route string
+	// Vars are written to the session through each var's reducer.
+	Vars map[string]any
+}
+    FuncResult is what a GraphFunc returns.
+
 type GCService interface {
 	// Run starts the periodic GC sweep. Blocking; run in a goroutine.
 	Run(ctx context.Context)
@@ -2254,19 +2753,19 @@ type GCService interface {
     GCService is the public interface returned by Engine.GC().
 
 type GenerateParams struct {
-	Temperature      float64
-	MaxTokens        int
-	TopP             float64
-	FrequencyPenalty float64
-	PresencePenalty  float64
-	Seed             int
+	Temperature      float64 `yaml:"temperature,omitempty"`
+	MaxTokens        int     `yaml:"max_tokens,omitempty"`
+	TopP             float64 `yaml:"top_p,omitempty"`
+	FrequencyPenalty float64 `yaml:"frequency_penalty,omitempty"`
+	PresencePenalty  float64 `yaml:"presence_penalty,omitempty"`
+	Seed             int     `yaml:"seed,omitempty"`
 	// Image / video / 3D-asset specific. Providers may use Extra for their
 	// native settings such as mesh resolution, style, rigging, or topology.
-	Width       int
-	Height      int
-	DurationSec float64
+	Width       int     `yaml:"width,omitempty"`
+	Height      int     `yaml:"height,omitempty"`
+	DurationSec float64 `yaml:"duration_sec,omitempty"`
 	// Extra provider-specific params (merged last)
-	Extra map[string]any
+	Extra map[string]any `yaml:"extra,omitempty"`
 }
     GenerateParams holds per-call tuning knobs for the generator.
 
@@ -2351,6 +2850,312 @@ type Gesture struct {
 }
     Gesture is the payload for ActionGesture — pointer or touch input.
 
+type Graph struct {
+	Slug  string `json:"slug,omitempty" yaml:"slug,omitempty"`
+	Entry string `json:"entry,omitempty" yaml:"entry,omitempty"` // id of the entry node
+	// Inputs names the inputs a caller supplies at run time (GraphRequest.Inputs),
+	// as opposed to outputs produced inside the graph. "action" is always
+	// available. Validate treats these as satisfied.
+	Inputs []string `json:"inputs,omitempty" yaml:"inputs,omitempty"`
+	// Vars declares how a session var written by more than one node is combined.
+	// A var with no entry is replaced by the last write. Validate refuses a
+	// graph where two nodes that can run in parallel Save the same undeclared
+	// var.
+	Vars  map[string]GraphVar `json:"vars,omitempty" yaml:"vars,omitempty"`
+	Nodes []GraphNode         `json:"nodes,omitempty" yaml:"nodes,omitempty"`
+	Edges []GraphEdge         `json:"edges,omitempty" yaml:"edges,omitempty"`
+}
+    Graph is a set of nodes joined by edges, run with Engine.RunGraph.
+
+    Edges come from two places. Control edges are written in Edges; they start
+    nodes and carry routing. Data edges are inferred: when an agent node's user
+    template declares a variable (Prompt.Variables) that another node produces
+    under its output key, the consumer runs after the producer. Data edges order
+    nodes but never start one.
+
+    A node runs once at least one control edge into it has fired and every edge
+    into it is settled — fired, or dead because its source finished without
+    firing it or never ran. So a node several branches lead to waits for the
+    branches that actually started in this run, and no longer.
+
+type GraphCursor struct {
+	Graph   string         // graph slug
+	Version int            // saved graph version, 0 for an in-code graph
+	Node    string         // the wait node
+	Inputs  map[string]any // the run's inputs and outputs when it paused
+	Visits  map[string]int // node runs so far, for MaxVisits and expressions
+}
+    GraphCursor is where a session stands in a graph between runs: the wait node
+    it is paused at and what the run had produced. It is engine-owned session
+    state, checkpointed with the run's last step so Fork resumes there.
+
+type GraphDecision struct {
+	// Question is an Evaluator question, built with EvalChoice, EvalNoul or
+	// EvalScore. It is asked under the node's ID.
+	Question EvalQuestion `json:"question,omitempty" yaml:"question,omitempty"`
+	// Over names the input whose text is evaluated, usually an earlier node's
+	// output key. Empty evaluates the action text.
+	Over string `json:"over,omitempty" yaml:"over,omitempty"`
+}
+    GraphDecision is the question a NodeDecide asks.
+
+type GraphEdge struct {
+	From string   `json:"from,omitempty" yaml:"from,omitempty"`
+	To   []string `json:"to,omitempty" yaml:"to,omitempty"`
+	// Route fires when the node's route value equals it. A NodeDecide emits the
+	// chosen option (Choice), "yes" or "no" (Noul), or the level index (Score);
+	// a NodeFunc emits FuncResult.Route.
+	Route string `json:"route,omitempty" yaml:"route,omitempty"`
+	// When fires when the expression is true. See the expression environment
+	// on GraphRun.
+	When string `json:"when,omitempty" yaml:"when,omitempty"`
+	// Uncertain, on an edge from a NodeDecide, fires when the answer's
+	// certainty is below this value (0..1).
+	Uncertain float64 `json:"uncertain,omitempty" yaml:"uncertain,omitempty"`
+	// Default fires when no other edge from the node fired.
+	Default bool `json:"default,omitempty" yaml:"default,omitempty"`
+	// OnError fires when the node failed.
+	OnError bool `json:"on_error,omitempty" yaml:"on_error,omitempty"`
+}
+    GraphEdge joins one node to one or more nodes. At most one of Route, When,
+    Uncertain, Default and OnError may be set; with none the edge always fires.
+
+    When a node settles, every matching edge fires, so several edges can fire at
+    once. Default fires when no other edge from the node did. When an Uncertain
+    edge fires, the node's Route edges do not.
+
+type GraphFunc func(ctx context.Context, call FuncCall) (FuncResult, error)
+    GraphFunc is a Go function a NodeFunc calls. It must be safe to call
+    concurrently: parallel branches may call it at the same time.
+
+type GraphHop struct {
+	From, To string
+	// Reason says why the edge fired: "" (unconditional), "route", "when",
+	// "uncertain", "default" or "error".
+	Reason string
+}
+    GraphHop is one edge a run took.
+
+type GraphNode struct {
+	ID   string        `json:"id,omitempty" yaml:"id,omitempty"`
+	Kind GraphNodeKind `json:"kind,omitempty" yaml:"kind,omitempty"`
+
+	// Agent configures a NodeAgent: the agent, its output key, whether it
+	// streams, its params, overrides, retry policy and own inputs, exactly as
+	// for a turn's agents. Agent.When is not used in graphs; route with edge
+	// conditions instead.
+	Agent *FlowAgent `json:"agent,omitempty" yaml:"agent,omitempty"`
+
+	// Func names the registered function a NodeFunc calls.
+	Func string `json:"func,omitempty" yaml:"func,omitempty"`
+	// Record, on a NodeFunc, saves the function's output as a step attributed
+	// to this agent slug (Owner-scoped, latest version), the way RecordStep
+	// does. Empty records no step.
+	Record string `json:"record,omitempty" yaml:"record,omitempty"`
+
+	// Decide configures a NodeDecide.
+	Decide *GraphDecision `json:"decide,omitempty" yaml:"decide,omitempty"`
+
+	// Wait configures a NodeWait.
+	Wait *GraphWait `json:"wait,omitempty" yaml:"wait,omitempty"`
+
+	// MaxVisits caps how many times the node may run in one session's use of
+	// the graph (across resumed runs). 0 = no cap. A node over its cap fails.
+	MaxVisits int `json:"max_visits,omitempty" yaml:"max_visits,omitempty"`
+
+	// OutputKey names the input a NodeFunc or NodeDecide output is exposed under
+	// to later nodes. A NodeAgent uses Agent.OutputKey.
+	OutputKey string `json:"output,omitempty" yaml:"output,omitempty"`
+
+	// Save assigns session vars from expressions once the node succeeds:
+	// var name → expression. The value is combined through the var's reducer.
+	Save map[string]string `json:"save,omitempty" yaml:"save,omitempty"`
+
+	// Required makes a failure of this node fail the whole run. Otherwise a
+	// failure ends the node's own branch, unless an OnError edge leaves it or
+	// Continue is set.
+	Required bool `json:"required,omitempty" yaml:"required,omitempty"`
+	// Continue evaluates the node's ordinary edges even when it fails, so its
+	// consumers still run and see its output missing.
+	Continue bool `json:"continue,omitempty" yaml:"continue,omitempty"`
+}
+    GraphNode is one node of a Graph. Set the fields for its Kind.
+
+type GraphNodeKind string
+    GraphNodeKind names what a graph node does.
+
+const (
+	// NodeAgent runs an agent and records a step.
+	NodeAgent GraphNodeKind = "agent"
+	// NodeFunc calls a Go function registered with Engine.RegisterFunc. It
+	// records a step only when GraphNode.Record names an agent to attribute it to.
+	NodeFunc GraphNodeKind = "func"
+	// NodeDecide asks the Evaluator one question and emits the answer as the
+	// node's route value. It records no step.
+	NodeDecide GraphNodeKind = "decide"
+	// NodeWait pauses the run until the next RunGraph call brings an Action.
+	// The person's input becomes the node's output, and is recorded as a step
+	// only when GraphWait.Record names an agent to attribute it to.
+	NodeWait GraphNodeKind = "wait"
+)
+type GraphPlan struct {
+	Nodes    []GraphPlanNode
+	Edges    []GraphPlanEdge
+	Problems []string // empty for a valid graph
+}
+    GraphPlan is a graph's resolved wiring, for inspection and visualization.
+
+type GraphPlanEdge struct {
+	From, To string
+	// Data marks an edge inferred from a template variable (Var); data edges
+	// order nodes but never start them.
+	Data bool
+	Var  string
+	// Trigger describes a control edge: "", "route=<v>", "when: <expr>",
+	// "uncertain<p", "default" or "error".
+	Trigger string
+}
+    GraphPlanEdge is one edge in a plan.
+
+type GraphPlanNode struct {
+	ID        string
+	Kind      GraphNodeKind
+	Agent     string // agent slug, for an agent node
+	Func      string // function name, for a func node
+	OutputKey string
+	Consumes  []string // inputs its user template declares, for an agent node
+	// EstimatedUSD is the agent's mean cost per step over the last 30 days, 0
+	// when it has no history or is not an agent node. Priced is false when that
+	// history includes steps priced from the placeholder rate.
+	EstimatedUSD float64
+	Priced       bool
+}
+    GraphPlanNode is one node in a plan.
+
+type GraphRecord struct {
+	ID        uuid.UUID
+	Owner     string // opaque app-owned scope; "" = global
+	Slug      string
+	Version   int
+	Category  string
+	IsActive  bool
+	Graph     Graph // Graph.Slug is set from Slug on save
+	CreatedAt time.Time
+}
+    GraphRecord is a saved, versioned graph. Records never change: an edit is a
+    new version, and SetActive chooses which version serves.
+
+type GraphRegistry interface {
+	// Create saves a new version. It refuses a graph that cannot run (the
+	// checks RunGraph makes) and one that carries per-request data: Overrides
+	// hold API keys and belong on GraphRequest, never in the database.
+	Create(ctx context.Context, r *GraphRecord) error
+	Get(ctx context.Context, owner, slug string, version int) (*GraphRecord, error)
+	Latest(ctx context.Context, owner, slug string) (*GraphRecord, error)
+	LatestActive(ctx context.Context, owner, slug string) (*GraphRecord, error)
+	SetActive(ctx context.Context, owner, slug string, version int) error
+	// List returns an owner's graphs (optional category filter), every version.
+	List(ctx context.Context, owner, category string) ([]*GraphRecord, error)
+	Delete(ctx context.Context, owner, slug string, version int) error
+	// Validate runs RunGraph's checks plus the ones that need the registry:
+	// every agent exists in the owner, every input a node consumes is produced
+	// or declared, and no two nodes that can run in parallel Save the same var
+	// without a reducer. It returns nil or an error wrapping ErrInvalidGraph
+	// that joins every problem found.
+	Validate(ctx context.Context, owner string, g Graph) error
+	// Plan returns the graph as data — nodes, edges (inferred data edges
+	// marked), problems and an estimated cost per agent node — without
+	// refusing a broken graph. It is what a visual editor draws.
+	Plan(ctx context.Context, owner string, g Graph) (*GraphPlan, error)
+}
+    GraphRegistry saves, resolves, validates and plans graphs, with the same
+    version semantics as FlowRegistry: Get with version 0 resolves the latest
+    ACTIVE version, Latest includes drafts, SetActive is publish and rollback.
+
+type GraphRequest struct {
+	Graph Graph
+	// Owner scopes every agent lookup in the run, as TurnRequest.Owner does.
+	Owner string
+	// Action is the user input driving the run. It is recorded on the entry
+	// node's step when the entry is an agent, and its text is available to
+	// every node as the "action" input.
+	Action *Action
+	// Inputs seed the run's inputs, available to every node.
+	Inputs map[string]any
+	// Params and Overrides apply to every agent node, under each node's own.
+	Params    map[string]any
+	Overrides map[string]any
+	// GeneratorOverride routes every agent node that sets no GeneratorOverride
+	// of its own to this registered generator for this run — the model a user
+	// picked, say, or a simulator.
+	GeneratorOverride string
+	// OnChunk receives the chunks of every agent node that streams.
+	OnChunk func(node string, c Chunk)
+	// OnNode receives each node's progress. It is called from the node's own
+	// goroutine and must not block.
+	OnNode func(ev NodeEvent)
+	// Restart discards a cursor the session holds (for this graph or another)
+	// and runs from the entry. Without it, a session paused in this graph
+	// resumes at its wait node, and one paused in a different graph is refused
+	// with ErrGraphMismatch.
+	Restart bool
+
+	// Has unexported fields.
+}
+    GraphRequest is the input to RunGraph.
+
+type GraphRun struct {
+	ID      uuid.UUID
+	Steps   []*Step          // recorded steps, in completion order
+	Nodes   map[string]*Step // by node id, nodes that recorded a step
+	Outputs map[string]any   // every input and output key at the end of the run
+	Errors  map[string]error // by node id
+	Skipped []string         // nodes no edge reached
+	// Ran lists every node that ran in this call — succeeded or failed, steps
+	// or not — in the order they finished.
+	Ran      []string
+	Path     []GraphHop // every edge taken, in the order taken
+	Messages []Message  // everything published on the run's bus
+	// Resumed names the wait node this run resumed from ("" = it started at
+	// the entry). Waiting names the wait node it paused at ("" = it finished),
+	// and Prompt is that node's GraphWait.Prompt.
+	Resumed, Waiting, Prompt string
+	// Cost totals the cost rows of the run's steps. Recorded steps (functions
+	// with Record) have none. PricingConfigured is false when any row was priced
+	// from the placeholder rate: show the USD as unknown then.
+	Cost UsageSummary
+}
+    GraphRun is the result of RunGraph.
+
+    Expressions in edges and Save mappings see:
+
+        inputs   run inputs and every output produced so far, by key
+        data     structured outputs by key (data.Ticket.priority)
+        vars     the session vars
+        eval     decision results by node id: label, p, certainty, noul, score,
+                 probabilities
+        run      errors: node id → error message, for nodes failed so far
+        visits   node id → how many times it has run in this session's use of
+                 the graph, resumed runs included
+
+type GraphVar struct {
+	Reducer Reducer `json:"reducer,omitempty" yaml:"reducer,omitempty"`
+}
+    GraphVar declares a session var's reducer.
+
+type GraphWait struct {
+	Expect  WaitExpect `json:"expect,omitempty" yaml:"expect,omitempty"`   // "" = ExpectAny
+	Options []string   `json:"options,omitempty" yaml:"options,omitempty"` // for ExpectChoice
+	Pattern string     `json:"pattern,omitempty" yaml:"pattern,omitempty"` // regular expression free text must match (ExpectText)
+	// Prompt is shown to whoever the run waits for; RunGraph returns it on
+	// GraphRun.Prompt. It is a hint for the caller's UI, not sent to any model.
+	Prompt string `json:"prompt,omitempty" yaml:"prompt,omitempty"`
+	// Record, when set, saves the person's input as a step attributed to this
+	// agent slug, with the Action recorded on it — a human-written turn.
+	Record string `json:"record,omitempty" yaml:"record,omitempty"`
+}
+    GraphWait configures a NodeWait.
+
 type HookBus interface {
 	// RegisterPre adds a named pre-hook. Hooks run in registration order.
 	RegisterPre(name string, h PreHook)
@@ -2390,6 +3195,51 @@ func (r *ImageResult) ResultID() uuid.UUID
 func (r *ImageResult) Status() ResultStatus
 
 func (r *ImageResult) TaskHandle() *TaskHandle
+
+type ImportItem struct {
+	Kind       string // "response_format", "prompt", "agent", "flow", "graph"
+	Slug       string
+	Version    int
+	Outcome    ImportOutcome
+	NewVersion int // for ImportBump
+}
+    ImportItem is one record's line in an import report.
+
+type ImportOptions struct {
+	// Owner is the scope the records are written to ("" = global).
+	Owner string
+	// Generators maps a bundle generator slug to a generator registered here.
+	// A slug with no entry maps to itself.
+	Generators map[string]string
+	OnConflict ConflictPolicy
+	// Activate makes imported flows and graphs the active version. Without it
+	// they arrive as drafts and live sessions are unaffected.
+	Activate bool
+	// DryRun plans the import and reports it without writing anything.
+	DryRun bool
+	// SkipRuntimeChecks skips the checks that need the importing app's own
+	// registrations (generators and Go functions). The CLI sets it; the app
+	// should run Verify at startup instead.
+	SkipRuntimeChecks bool
+}
+    ImportOptions control an import.
+
+type ImportOutcome string
+    ImportOutcome is what happened to one record.
+
+const (
+	ImportCreate   ImportOutcome = "create"   // not in the target: written
+	ImportSkip     ImportOutcome = "skip"     // already there, identical
+	ImportConflict ImportOutcome = "conflict" // already there, different
+	ImportBump     ImportOutcome = "bump"     // different: written as NewVersion
+)
+type ImportReport struct {
+	Items    []ImportItem
+	Written  bool
+	Warnings []string
+}
+    ImportReport is what Import planned and, unless it was a dry run or failed,
+    wrote.
 
 type InProcessCache struct {
 	// Has unexported fields.
@@ -2504,6 +3354,26 @@ type ModelPrice struct {
 func (p ModelPrice) Cost(inputTokens, outputTokens int) float64
     Cost returns the USD cost for the given token counts.
 
+type NodeEvent struct {
+	Node  string
+	Kind  NodeEventKind
+	Step  *Step  // the recorded step, when the node recorded one
+	Text  string // the node's output text, on NodeDone
+	Route string // the node's route value, on NodeDone
+	Err   error  // on NodeFailed
+}
+    NodeEvent is one node's progress in a run.
+
+type NodeEventKind string
+    NodeEventKind names a NodeEvent.
+
+const (
+	NodeStarted NodeEventKind = "started"
+	NodeDone    NodeEventKind = "done"
+	NodeFailed  NodeEventKind = "failed"
+	// NodeSkipped: no edge into the node fired, so it did not run.
+	NodeSkipped NodeEventKind = "skipped"
+)
 type NotFoundError struct {
 	Kind string // "agent", "prompt", "session", "budget", "response_format"
 	Key  string // the lookup key: slug, "slug@vN", or a UUID
@@ -2640,9 +3510,22 @@ type RawInput struct {
 }
     RawInput is opaque user input the platform passes to an ActionInterpreter.
 
+type Reducer string
+    Reducer combines a new value into a session var.
+
+const (
+	// ReduceReplace overwrites the var (the default).
+	ReduceReplace Reducer = "replace"
+	// ReduceAppend appends to a list, creating it if absent.
+	ReduceAppend Reducer = "append"
+	// ReduceMerge merges a map's keys into the var's map.
+	ReduceMerge Reducer = "merge"
+	// ReduceSum adds a number to the var.
+	ReduceSum Reducer = "sum"
+)
 type ResponseFormat struct {
-	Schema     map[string]any // JSON Schema
-	StrictMode bool
+	Schema     map[string]any `yaml:"schema,omitempty"` // JSON Schema
+	StrictMode bool           `yaml:"strict,omitempty"`
 }
     ResponseFormat describes the expected JSON schema for structured output.
 
@@ -2836,6 +3719,9 @@ type SessionEvent struct {
 	TurnRole  string // "lead", "follower:<slug>" or "" outside a turn
 	Err       string // step.failed
 	BranchID  uuid.UUID
+	// Node and Hop are set on graph events.
+	Node string
+	Hop  *GraphHop
 	// Replayed marks a step.done rebuilt from storage on Subscribe, rather
 	// than delivered live.
 	Replayed bool
@@ -2862,6 +3748,13 @@ const (
 	// EventForked fires on the parent when a branch is forked from it;
 	// BranchID is the new session.
 	EventForked SessionEventType = "forked"
+	// EventGraphHop fires for every edge a RunGraph run takes. Node is the
+	// node the edge leaves; Hop describes it.
+	EventGraphHop SessionEventType = "graph.hop"
+	// EventGraphWait fires when a RunGraph run pauses at a wait node (Node).
+	EventGraphWait SessionEventType = "graph.wait"
+	// EventGraphDone fires when a RunGraph run finishes. TurnID is the run ID.
+	EventGraphDone SessionEventType = "graph.done"
 )
 type SessionRegistry interface {
 	// Create persists a new session.
@@ -2986,6 +3879,9 @@ type State struct {
 	// records the membership at that step and a fork restores it. Change it
 	// with Engine.AddParticipant / RemoveParticipant.
 	Participants []Participant
+	// Graph is where the session is paused in a graph run, nil when it is not.
+	// Only the engine writes it (RunGraph); steps and hooks never change it.
+	Graph *GraphCursor `json:",omitempty"`
 }
     State is the live state of a session between steps.
 
@@ -3409,6 +4305,19 @@ func (r *VideoResult) Status() ResultStatus
 
 func (r *VideoResult) TaskHandle() *TaskHandle
 
+type WaitExpect string
+    WaitExpect says what input a NodeWait accepts.
+
+const (
+	// ExpectAny accepts any action. Its text, if any, is the node's output.
+	ExpectAny WaitExpect = "any"
+	// ExpectText accepts free text, matching Pattern when one is set.
+	ExpectText WaitExpect = "text"
+	// ExpectChoice accepts one of Options: an ActionSelect (by option_id or
+	// option_index), or free text equal to an option. The option is the node's
+	// output and its route value.
+	ExpectChoice WaitExpect = "choice"
+)
 type WorldDelta struct {
 	Op       string         `json:"op"`             // "add_entity", "remove_entity", "set_lighting", …
 	Type     string         `json:"type,omitempty"` // entity type for add_entity

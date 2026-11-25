@@ -19,7 +19,7 @@ const responseFormatColumns = "id, slug, version, schema, strict, created_at, ow
 // editor, and a schema can be arbitrarily large. Callers fetch bodies with Get.
 const responseFormatListColumns = "id, slug, version, strict, created_at, owner, category"
 
-func sqlInsertResponseFormat(ctx context.Context, db *sql.DB, prefix string, rf *ResponseFormatRecord) error {
+func sqlInsertResponseFormat(ctx context.Context, db execer, prefix string, rf *ResponseFormatRecord) error {
 	schemaJSON, _ := json.Marshal(rf.Schema)
 	_, err := db.ExecContext(ctx, fmt.Sprintf(`
 		INSERT INTO %sresponse_formats (id, slug, version, schema, strict, created_at, owner, category)

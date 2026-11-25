@@ -24,6 +24,7 @@ Noewright handles the infrastructure — session management, versioned agents an
 |---|---|
 | **Modality-agnostic** | Text, image, video, audio, 3D assets, and structured output in one pipeline |
 | **Versioned agents & prompts** | Slug + version addressing; swap models without touching session history |
+| **Graphs** | Agents, Go functions and Evaluator decisions joined by conditional edges; fan out, join, route on confidence |
 | **Session branching & replay** | Fork at any step; explore alternatives; GC stale branches automatically |
 | **Hook bus** | Pre- and post-hooks for validation, retry logic, and content filtering |
 | **Cost tracking & budgets** | Per-step token/USD recording; time-windowed budget enforcement |
@@ -241,6 +242,65 @@ multi-agent, multimodal session that runs with no API keys.
 - `StepRequest.GeneratorOverride` / `ParamOverride` / `Overrides` allow
   per-request provider, parameter, and key/model routing (e.g. per-user API keys).
 - `Engine.RegisterGenerator(slug, gen)` adds a modality at runtime.
+
+### Graphs: branching, functions and decisions
+
+`RunGraph` runs a `Graph`: agents, Go functions (`RegisterFunc`) and Evaluator
+decisions joined by edges. Any node can feed one or more nodes, and branches
+join again before a node they all lead to. Edges fire unconditionally, on a
+route value, on an [expr](https://github.com/expr-lang/expr) condition, when a
+decision is uncertain, by default, or on error. Data edges are still inferred
+from `{{.Inputs.X}}`. `RunTurn` runs on the same executor.
+
+```go
+e.RegisterFunc("lookup-account", lookupAccount)
+
+run, err := e.RunGraph(ctx, sess, noewright.GraphRequest{Graph: noewright.Graph{
+    Slug: "support", Entry: "intake",
+    Nodes: []noewright.GraphNode{
+        {ID: "intake", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "triage", OutputKey: "Ticket"}},
+        {ID: "intent", Kind: noewright.NodeDecide, Decide: &noewright.GraphDecision{
+            Question: noewright.EvalChoice("What does the customer want?", map[string]any{"refund": nil, "bug": nil}),
+            Over:     "Ticket"}},
+        {ID: "account", Kind: noewright.NodeFunc, Func: "lookup-account", OutputKey: "Account"},
+        {ID: "refund", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "refund-policy"}},
+        {ID: "repro", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "repro"}},
+        {ID: "clarify", Kind: noewright.NodeAgent, Agent: &noewright.FlowAgent{AgentSlug: "clarify"}},
+    },
+    Edges: []noewright.GraphEdge{
+        {From: "intake", To: []string{"intent", "account"}}, // fan out
+        {From: "intent", Route: "refund", To: []string{"refund"}},
+        {From: "intent", Route: "bug", To: []string{"repro"}},
+        {From: "intent", Uncertain: 0.6, To: []string{"clarify"}}, // not sure: ask
+    },
+}, Action: action})
+```
+
+Graphs can be saved and versioned like flows (`e.Graphs()`, `e.RunGraphBySlug`),
+and `Graphs().Plan` returns the wiring, problems and cost estimates for a
+visual editor. See [`llms.txt`](llms.txt) for the full reference.
+
+### Bundles
+
+Export graphs and flows with everything they use into one YAML file, and load
+it into another database. References are `slug@version`, never database ids;
+secrets and code stay behind. Importing the same file twice changes nothing,
+and a record that differs stops the import unless you ask for it to be bumped
+to a new version.
+
+```bash
+noewright export graph:support -o support.yaml
+noewright verify support.yaml                               # no database needed
+noewright import support.yaml --owner tenant-7 --map g=openai-mini --dry-run
+```
+
+In code: `e.Bundles().Export`, `noewright.ParseBundle`, `e.Bundles().Import`
+and `e.Bundles().Verify`. `noewright schema` prints the JSON Schema for editors.
+
+A bundle can also carry tests, scripted runs of its graphs with expectations,
+and the evidence of their last run. `e.Bundles().Test` re-runs them in the
+importing app and reports which outputs changed; `noewright test bundle.yaml`
+runs them offline against the echo generator.
 
 ### Branching & Replay
 

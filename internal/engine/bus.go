@@ -46,6 +46,9 @@ const busChanBuffer = 256
 type busMsg struct {
 	from, topic string
 	data        any
+	// flushed, when set, marks a flush request rather than a message: the
+	// dispatcher closes it once every message enqueued before it is logged.
+	flushed chan struct{}
 }
 
 type busImpl struct {
@@ -92,6 +95,10 @@ func (b *busImpl) run() {
 	for {
 		select {
 		case m := <-b.in:
+			if m.flushed != nil {
+				close(m.flushed)
+				continue
+			}
 			seq++
 			msg := Message{From: m.from, Topic: m.topic, Data: m.data, Seq: seq}
 			b.mu.Lock()
@@ -138,10 +145,30 @@ func (b *busImpl) Subscribe(topic string) <-chan Message {
 	return ch
 }
 
+// Messages returns everything published so far. Publish only enqueues, so it
+// first waits for the dispatcher to log every message published before the
+// call; without that, a snapshot taken right after the last Publish (as a turn
+// does when it ends) could miss the newest messages.
 func (b *busImpl) Messages() []Message {
+	b.flush()
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return append([]Message(nil), b.log...)
+}
+
+// flush waits until the dispatcher has logged every message enqueued before
+// it. It returns at once if the bus is closed.
+func (b *busImpl) flush() {
+	done := make(chan struct{})
+	select {
+	case b.in <- busMsg{flushed: done}:
+	case <-b.done:
+		return
+	}
+	select {
+	case <-done:
+	case <-b.done:
+	}
 }
 
 // close ends the turn; the dispatcher closes every subscriber channel. Safe to

@@ -166,9 +166,17 @@ type Engine struct {
 	judges          JudgeRegistry
 	gc              *gcService
 	flows           *flowService
+	graphs          *graphService
+	bundles         *bundleService
 	poller          *asyncPollerService
 
 	onTaskResolved func(context.Context, TaskResolution)
+
+	// funcs are the Go functions graph func nodes call, by name.
+	funcsMu sync.RWMutex
+	funcs   map[string]GraphFunc
+	// graphLocks holds a *sync.Mutex per session id, serialising RunGraph.
+	graphLocks sync.Map
 
 	// pollerCancel stops the async poller; bg tracks every background goroutine
 	// the engine owns so Close can wait for them to drain. Both are guarded by
@@ -255,6 +263,8 @@ func New(cfg Config) (*Engine, error) {
 	e.judges = newJudgeRegistryImpl()
 	e.gc = &gcService{e: e}
 	e.flows = &flowService{e: e}
+	e.graphs = &graphService{e: e}
+	e.bundles = &bundleService{e: e}
 
 	if cfg.AsyncPoller.Workers > 0 {
 		e.poller = newAsyncPollerService(e, cfg.AsyncPoller)

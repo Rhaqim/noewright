@@ -16,7 +16,7 @@ import (
 
 const promptColumns = "id, slug, version, kind, category, body, variables, metadata, created_at, notes, owner"
 
-func sqlInsertPrompt(ctx context.Context, db *sql.DB, prefix string, p *Prompt) error {
+func sqlInsertPrompt(ctx context.Context, db execer, prefix string, p *Prompt) error {
 	varsJSON, _ := json.Marshal(p.Variables)
 	metaJSON, _ := json.Marshal(p.Metadata)
 	_, err := db.ExecContext(ctx, fmt.Sprintf(`

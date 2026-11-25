@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"sort"
-	"sync"
 
 	"github.com/google/uuid"
 )
@@ -30,36 +29,36 @@ import (
 // FlowAgent is one agent participating in a turn.
 type FlowAgent struct {
 	// AgentSlug + AgentVersion address a registered agent (version 0 = latest).
-	AgentSlug    string
-	AgentVersion int
+	AgentSlug    string `json:"agent,omitempty" yaml:"agent,omitempty"`
+	AgentVersion int    `json:"version,omitempty" yaml:"version,omitempty"`
 	// Stream, on the lead agent only, routes streaming chunks to TurnRequest.OnChunk.
-	Stream bool
+	Stream bool `json:"stream,omitempty" yaml:"stream,omitempty"`
 	// OutputKey is the key under which this agent's text output is exposed to
 	// later agents in the same turn via {{.Inputs.<OutputKey>}}. For the lead it
 	// defaults to "Lead"; for followers it is optional.
-	OutputKey string
+	OutputKey string `json:"output,omitempty" yaml:"output,omitempty"`
 	// Overrides is opaque per-call data forwarded to the generator (e.g. a
 	// per-user api key / model). Optional.
-	Overrides map[string]any
+	Overrides map[string]any `json:"overrides,omitempty" yaml:"overrides,omitempty"`
 	// GeneratorOverride routes this agent's call to a different registered
 	// generator for this turn only. Optional.
-	GeneratorOverride string
+	GeneratorOverride string `json:"generator_override,omitempty" yaml:"generator_override,omitempty"`
 	// Params are this agent's tuning knobs (model + domain), merged over the
 	// turn's Params. See StepRequest.Params.
-	Params map[string]any
+	Params map[string]any `json:"params,omitempty" yaml:"params,omitempty"`
 	// RetryMode and MaxRetries override the engine retry defaults for this
 	// agent's step (e.g. a keep-best lead, a discard follower). Zero values
 	// inherit the engine default.
-	RetryMode  RetryMode
-	MaxRetries int
+	RetryMode  RetryMode `json:"retry_mode,omitempty" yaml:"retry_mode,omitempty"`
+	MaxRetries int       `json:"max_retries,omitempty" yaml:"max_retries,omitempty"`
 	// SystemPrompt, when non-zero, is this agent's per-turn system prompt
 	// override (typically PromptRef{Literal: ...} assembled by the embedder).
 	// The zero value leaves the agent's registered system prompt in place.
-	SystemPrompt PromptRef
+	SystemPrompt PromptRef `json:"system_prompt,omitzero" yaml:"system_prompt,omitempty"`
 	// Inputs are merged over the turn's shared Inputs for this agent only, so
 	// each agent can receive its own user_prompt / values while still seeing the
 	// lead's output. Nil leaves the shared Inputs untouched.
-	Inputs map[string]any
+	Inputs map[string]any `json:"inputs,omitempty" yaml:"inputs,omitempty"`
 	// When, on a FOLLOWER, decides whether this agent runs at all this turn. It
 	// is consulted after the lead settles (and, for a layered follower, after
 	// its producers), with the inputs this agent would have received. Returning
@@ -75,7 +74,9 @@ type FlowAgent struct {
 	//
 	// EXPERIMENTAL: this field is part of the opt-in evaluator work and may
 	// change shape. It is inert unless set.
-	When func(ctx context.Context, g FollowerGate) (bool, error)
+	//
+	// When is code, so it is never encoded: a saved graph or flow cannot carry it.
+	When func(ctx context.Context, g FollowerGate) (bool, error) `json:"-" yaml:"-"`
 }
 
 // FollowerGate is what a FlowAgent.When gate is given to decide on. It carries
@@ -213,7 +214,6 @@ func (e *Engine) RunTurn(ctx context.Context, session *Session, req TurnRequest)
 	bus := newBus()
 	defer bus.close()
 
-	// ---- Lead ----
 	leadKey := req.Flow.Lead.OutputKey
 	if leadKey == "" {
 		leadKey = "Lead"
@@ -237,71 +237,132 @@ func (e *Engine) RunTurn(ctx context.Context, session *Session, req TurnRequest)
 		}
 		onChunk = nil
 	}
-	leadStep, err := e.steps.run(ctx, session, StepRequest{
-		external:             req.LeadResult,
-		author:               req.LeadAuthor,
-		AgentSlug:            req.Flow.Lead.AgentSlug,
-		AgentVersion:         req.Flow.Lead.AgentVersion,
-		Owner:                req.Owner,
-		Action:               req.Action,
-		OnChunk:              onChunk,
-		OnStreamEnd:          req.OnStreamEnd,
-		RetryMode:            req.Flow.Lead.RetryMode,
-		MaxRetries:           req.Flow.Lead.MaxRetries,
-		SystemPromptOverride: promptRefOf(req.Flow.Lead.SystemPrompt),
-		Inputs:               agentInputs(inputs, req.Flow.Lead.Inputs),
-		Params:               mergeParams(req.Params, req.Flow.Lead.Params),
-		Overrides:            pickOverrides(req.Flow.Lead.Overrides, req.Overrides),
-		GeneratorOverride:    req.Flow.Lead.GeneratorOverride,
-		turnID:               turnID,
-		turnRole:             "lead",
-		bus:                  bus,
-	})
-	// ErrSessionNotPersisted means the lead step itself ran and committed — only
-	// the session row is stale. The step is valid, so the turn proceeds and the
-	// error is surfaced on Turn.Errors rather than aborting siblings that would
-	// otherwise have succeeded.
-	var leadNotPersisted error
-	if errors.Is(err, ErrSessionNotPersisted) {
-		leadNotPersisted, err = err, nil
+
+	// A turn is a graph with a fixed shape: the lead is the entry node, and the
+	// followers form dependency layers after it. compileTurn builds that graph;
+	// the shared executor runs it.
+	g, leadStep := e.compileTurn(ctx, session, req, turnID, leadKey, onChunk, bus)
+	res := runExecGraph(ctx, g, inputs)
+	if res.abort != nil {
+		return nil, fmt.Errorf("noewright: turn %q lead %q: %w", req.Flow.Slug, req.Flow.Lead.AgentSlug, res.abort)
 	}
-	if err != nil {
-		return nil, fmt.Errorf("noewright: turn %q lead %q: %w", req.Flow.Slug, req.Flow.Lead.AgentSlug, err)
-	}
-	inputs[leadKey] = ResultText(leadStep.Result)
-	bus.Publish(leadSlug, "lead.done", ResultText(leadStep.Result))
 
 	turn := &Turn{
 		ID:        turnID,
-		Lead:      leadStep,
+		Lead:      *leadStep,
 		Followers: map[string]*Step{},
 		Errors:    map[string]error{},
-		Steps:     []*Step{leadStep},
+		Steps:     res.steps, // lead first, then followers in completion order
 	}
-	// The lead ran, but its session row write did not land. The step stands; the
-	// caller is told under the "lead" key so it can reconcile before trusting
-	// Session.State.
-	if leadNotPersisted != nil {
-		turn.Errors["lead"] = leadNotPersisted
-		e.log.Error("turn lead session row not persisted", "turn_id", turnID, "agent", leadSlug, "err", leadNotPersisted)
+	// Errors are replayed in the order they were recorded, keyed by follower
+	// slug — or "lead" for a lead whose session row was not persisted — so a
+	// later write wins exactly as it did when the turn wrote the map directly.
+	for _, ce := range res.errs {
+		turn.Errors[turnNodeKey(req.Flow, ce.node)] = ce.err
 	}
-	// Fire the lead callback synchronously, before any follower goroutine starts,
-	// so an embedder can build the follower inputs from the lead's output without
-	// racing the fan-out.
-	if req.OnStep != nil {
-		req.OnStep("lead", leadStep, nil)
+	for k, step := range res.steps {
+		if node := res.stepNodes[k]; node != 0 {
+			turn.Followers[turnNodeKey(req.Flow, node)] = step
+		}
+	}
+	for _, node := range res.skipped {
+		turn.Skipped = append(turn.Skipped, turnNodeKey(req.Flow, node))
 	}
 
-	// ---- Followers (dependency-layered) ----
-	// Followers run concurrently within a layer; a follower that consumes another
-	// follower's output runs in a later layer so its producer has finished. A
-	// flow with no cross-follower dependencies is a single layer — identical to
-	// the historical all-concurrent fan-out.
-	//
-	// Within a layer the shared inputs map is only READ (each follower clones it
-	// via agentInputs), and it is written ONLY at a layer barrier below, when no
-	// follower goroutine is running — so the map write never races a read.
+	// The turn's dominant modality is the lead's output.
+	session.State.Modality = turn.Lead.Result.Modality()
+
+	turn.Messages = bus.Messages()
+	e.emit(ctx, SessionEvent{Type: EventTurnDone, SessionID: session.ID, StepIndex: turn.Lead.Index, TurnID: turnID})
+	return turn, nil
+}
+
+// turnNodeKey names a turn graph node the way Turn reports it: "lead" for the
+// entry node, the follower's agent slug otherwise.
+func turnNodeKey(f Flow, node int) string {
+	if node == 0 {
+		return "lead"
+	}
+	return f.Followers[node-1].AgentSlug
+}
+
+// compileTurn builds the executable graph for a turn. Node 0 is the lead,
+// required and run on the caller's goroutine; node i (i ≥ 1) is follower i-1.
+// Followers keep RunTurn's long-standing contract:
+//
+//   - They run in dependency layers (topoLayers over their templates'
+//     declared variables). Every node in a layer has an edge from every node in
+//     the layer before it (from the lead, for the first layer), so a layer
+//     starts only when the whole previous layer has settled — the barrier the
+//     turn has always had, which OnStep order and When gates rely on.
+//   - A follower that fails, is gated out or panics still fires its edges, so
+//     later layers run and a consumer of its output fails on the missing input.
+//   - A follower's panic is recovered and recorded as its error.
+//
+// The returned pointer is set to the lead's step once the lead has run; it is
+// read only after that (by follower gates and by RunTurn).
+func (e *Engine) compileTurn(ctx context.Context, session *Session, req TurnRequest, turnID uuid.UUID,
+	leadKey string, onChunk func(Chunk), bus *busImpl) (*execGraph, **Step) {
+	leadStep := new(*Step)
+	leadSlug := req.Flow.Lead.AgentSlug
+
+	lead := execNode{
+		outputKey: leadKey,
+		inputs:    req.Flow.Lead.Inputs,
+		required:  true,
+		run: func(ctx context.Context, in map[string]any) (*execOut, error) {
+			step, err := e.steps.run(ctx, session, StepRequest{
+				external:             req.LeadResult,
+				author:               req.LeadAuthor,
+				AgentSlug:            req.Flow.Lead.AgentSlug,
+				AgentVersion:         req.Flow.Lead.AgentVersion,
+				Owner:                req.Owner,
+				Action:               req.Action,
+				OnChunk:              onChunk,
+				OnStreamEnd:          req.OnStreamEnd,
+				RetryMode:            req.Flow.Lead.RetryMode,
+				MaxRetries:           req.Flow.Lead.MaxRetries,
+				SystemPromptOverride: promptRefOf(req.Flow.Lead.SystemPrompt),
+				Inputs:               in,
+				Params:               mergeParams(req.Params, req.Flow.Lead.Params),
+				Overrides:            pickOverrides(req.Flow.Lead.Overrides, req.Overrides),
+				GeneratorOverride:    req.Flow.Lead.GeneratorOverride,
+				turnID:               turnID,
+				turnRole:             "lead",
+				bus:                  bus,
+			})
+			if stepSucceeded(step, err) {
+				*leadStep = step
+				bus.Publish(leadSlug, "lead.done", ResultText(step.Result))
+			}
+			return stepOut(step, err), err
+		},
+		// ErrSessionNotPersisted means the lead step itself ran and committed —
+		// only the session row is stale. The turn proceeds; the error is
+		// surfaced on Turn.Errors["lead"]. The lead callback fires before any
+		// follower starts, so an embedder can build follower inputs from it.
+		settled: func(out *execOut, err error) {
+			if !outSucceeded(out, err) {
+				return
+			}
+			step := out.step
+			if err != nil {
+				e.log.Error("turn lead session row not persisted", "turn_id", turnID, "agent", leadSlug, "err", err)
+			}
+			if req.OnStep != nil {
+				req.OnStep("lead", step, nil)
+			}
+		},
+	}
+
+	g := &execGraph{nodes: []execNode{lead}, entry: 0}
 	followers := req.Flow.Followers
+	for _, f := range followers {
+		g.nodes = append(g.nodes, e.followerNode(session, req, turnID, f, leadStep, bus))
+	}
+	g.succ = make([][]execEdge, len(g.nodes))
+
+	// Dependency layers, exactly as the turn has always computed them.
 	outputKeys := make([]string, len(followers))
 	consumed := make([][]string, len(followers))
 	for i, f := range followers {
@@ -317,159 +378,109 @@ func (e *Engine) RunTurn(ctx context.Context, session *Session, req TurnRequest)
 			"turn_id", turnID, "count", len(cyclic))
 		layers = append(layers, cyclic)
 	}
-
-	var mu sync.Mutex
-	runFollower := func(f FlowAgent) {
-		role := "follower:" + f.AgentSlug
-		fired := false
-		// A follower panic (in the generator, a hook, or an OnStep callback)
-		// must degrade only this follower, not crash the whole process. Record
-		// it as a follower error and, if the normal path had not already fired
-		// OnStep, surface it there too.
-		defer func() {
-			if r := recover(); r != nil {
-				perr := fmt.Errorf("noewright: follower %q panicked: %v", f.AgentSlug, r)
-				mu.Lock()
-				if _, ok := turn.Followers[f.AgentSlug]; !ok {
-					turn.Errors[f.AgentSlug] = perr
-				}
-				mu.Unlock()
-				e.log.Error("turn follower panicked", "turn_id", turnID, "agent", f.AgentSlug, "err", perr)
-				if req.OnStep != nil && !fired {
-					req.OnStep(role, nil, perr)
-				}
+	prev := []int{0}
+	for _, layer := range layers {
+		var cur []int
+		for _, idx := range layer {
+			cur = append(cur, idx+1)
+		}
+		for _, p := range prev {
+			for _, c := range cur {
+				g.succ[p] = append(g.succ[p], execEdge{to: c})
 			}
-		}()
-		// This follower's own copy of the inputs, built once and shared by the
-		// gate and the step so the gate decides on exactly what the agent would
-		// have received.
-		in := agentInputs(inputs, f.Inputs)
+		}
+		prev = cur
+	}
+	return g, leadStep
+}
 
-		// Gate: an opt-in check that can skip this follower entirely. A skip is
-		// not a failure — no step is opened and nothing is recorded in
-		// turn.Errors — so a caller distinguishes "we chose not to run this"
-		// from "this ran and broke" by looking at Skipped rather than Errors.
-		if f.When != nil {
+// followerNode builds the graph node for one follower of a turn.
+func (e *Engine) followerNode(session *Session, req TurnRequest, turnID uuid.UUID, f FlowAgent, leadStep **Step, bus *busImpl) execNode {
+	role := "follower:" + f.AgentSlug
+	node := execNode{
+		outputKey:     f.OutputKey,
+		inputs:        f.Inputs,
+		fireOnFail:    true,
+		recoverPanics: true,
+		// A follower panic (in the generator, a hook, or an OnStep callback)
+		// must degrade only this follower, not crash the whole process.
+		onPanic: func(r any) error {
+			perr := fmt.Errorf("noewright: follower %q panicked: %v", f.AgentSlug, r)
+			e.log.Error("turn follower panicked", "turn_id", turnID, "agent", f.AgentSlug, "err", perr)
+			return perr
+		},
+		run: func(ctx context.Context, in map[string]any) (*execOut, error) {
+			step, ferr := e.steps.run(ctx, session, StepRequest{
+				AgentSlug:    f.AgentSlug,
+				AgentVersion: f.AgentVersion,
+				Owner:        req.Owner,
+				// The turn's Action is recorded once, on the lead step. Followers
+				// analyse the lead's output and read the action via Inputs, so they
+				// carry no Action (sharing the lead's would duplicate its ID).
+				Action:               nil,
+				RetryMode:            f.RetryMode,
+				MaxRetries:           f.MaxRetries,
+				SystemPromptOverride: promptRefOf(f.SystemPrompt),
+				Inputs:               in,
+				Params:               mergeParams(req.Params, f.Params),
+				Overrides:            pickOverrides(f.Overrides, req.Overrides),
+				GeneratorOverride:    f.GeneratorOverride,
+				turnID:               turnID,
+				turnRole:             role,
+				bus:                  bus,
+			})
+			// ErrSessionNotPersisted leaves a valid, committed step behind — only
+			// the session row is stale. Publish it so siblings can react; the
+			// executor records it as a success while still reporting the error.
+			if stepSucceeded(step, ferr) {
+				bus.Publish(f.AgentSlug, f.AgentSlug, ResultText(step.Result))
+			}
+			if ferr != nil {
+				e.log.Error("turn follower failed", "turn_id", turnID, "agent", f.AgentSlug, "err", ferr)
+			}
+			return stepOut(step, ferr), ferr
+		},
+		// OnStep fires from the follower's own goroutine, outside any lock, so a
+		// slow callback on one follower cannot serialize the others.
+		settled: func(out *execOut, err error) {
+			if req.OnStep == nil {
+				return
+			}
+			var step *Step
+			if out != nil {
+				step = out.step
+			}
+			switch {
+			case step != nil && errors.Is(err, ErrSessionNotPersisted):
+				req.OnStep(role, step, err) // valid step, stale session row
+			case err != nil:
+				req.OnStep(role, nil, err)
+			default:
+				req.OnStep(role, step, nil)
+			}
+		},
+	}
+	// Gate: an opt-in check that can skip this follower entirely. A skip is not
+	// a failure — no step is opened and nothing is recorded in Turn.Errors. A
+	// gate that cannot decide is reported and the follower skipped, so the
+	// failure is visible while the rest of the fan-out completes.
+	if f.When != nil {
+		node.gate = func(ctx context.Context, in map[string]any) (bool, error) {
 			run, gerr := f.When(ctx, FollowerGate{
 				Agent:   f,
 				Session: session,
-				Lead:    leadStep,
+				Lead:    *leadStep,
 				Inputs:  in,
 				TurnID:  turnID,
 			})
 			if gerr != nil {
-				// A gate that cannot decide must not silently pick one way.
-				// Report it and skip, so the failure is visible on the turn
-				// while the rest of the fan-out still completes.
 				gerr = fmt.Errorf("noewright: follower %q gate: %w", f.AgentSlug, gerr)
-				mu.Lock()
-				turn.Errors[f.AgentSlug] = gerr
-				turn.Skipped = append(turn.Skipped, f.AgentSlug)
-				mu.Unlock()
 				e.log.Error("turn follower gate failed", "turn_id", turnID, "agent", f.AgentSlug, "err", gerr)
-				if req.OnStep != nil {
-					fired = true
-					req.OnStep(role, nil, gerr)
-				}
-				return
 			}
-			if !run {
-				mu.Lock()
-				turn.Skipped = append(turn.Skipped, f.AgentSlug)
-				mu.Unlock()
-				return
-			}
-		}
-
-		step, ferr := e.steps.run(ctx, session, StepRequest{
-			AgentSlug:    f.AgentSlug,
-			AgentVersion: f.AgentVersion,
-			Owner:        req.Owner,
-			// The turn's Action is recorded once, on the lead step. Followers
-			// analyse the lead's output and read the action via Inputs, so they
-			// carry no Action (sharing the lead's would duplicate its ID).
-			Action:               nil,
-			RetryMode:            f.RetryMode,
-			MaxRetries:           f.MaxRetries,
-			SystemPromptOverride: promptRefOf(f.SystemPrompt),
-			Inputs:               in,
-			Params:               mergeParams(req.Params, f.Params),
-			Overrides:            pickOverrides(f.Overrides, req.Overrides),
-			GeneratorOverride:    f.GeneratorOverride,
-			turnID:               turnID,
-			turnRole:             role,
-			bus:                  bus,
-		})
-		// ErrSessionNotPersisted leaves a valid, committed step behind — only
-		// the session row is stale. Treat the step as a success (publish it,
-		// record it) while still reporting the error, so a stale row does not
-		// silently drop a follower's output from the turn.
-		notPersisted := errors.Is(ferr, ErrSessionNotPersisted)
-		if ferr == nil || notPersisted {
-			// Publish the follower's output so concurrent siblings can react.
-			bus.Publish(f.AgentSlug, f.AgentSlug, ResultText(step.Result))
-		}
-		// Record the outcome under the mutex (map/slice writes only)...
-		mu.Lock()
-		if ferr != nil {
-			turn.Errors[f.AgentSlug] = ferr
-			e.log.Error("turn follower failed", "turn_id", turnID, "agent", f.AgentSlug, "err", ferr)
-		}
-		if ferr == nil || notPersisted {
-			turn.Followers[f.AgentSlug] = step
-			turn.Steps = append(turn.Steps, step)
-		}
-		mu.Unlock()
-		// ...then fire OnStep OUTSIDE the mutex so a slow callback on one
-		// follower cannot serialize the others.
-		if req.OnStep != nil {
-			fired = true
-			switch {
-			case notPersisted:
-				// Valid step, stale session row — hand back both.
-				req.OnStep(role, step, ferr)
-			case ferr != nil:
-				req.OnStep(role, nil, ferr)
-			default:
-				req.OnStep(role, step, nil)
-			}
+			return run, gerr
 		}
 	}
-
-	for _, layer := range layers {
-		var wg sync.WaitGroup
-		for _, idx := range layer {
-			f := followers[idx]
-			wg.Add(1)
-			go func(f FlowAgent) {
-				defer wg.Done()
-				runFollower(f)
-			}(f)
-		}
-		wg.Wait()
-		// Barrier: publish this layer's outputs into the shared inputs so the
-		// next layer's templates can read them. Single-threaded here (all layer
-		// goroutines have returned), so the map write cannot race a follower.
-		// A follower that failed is absent from turn.Followers, so its output is
-		// simply not injected — a consumer that declared it then fails at render
-		// with ErrMissingVariables, attributing the missing dependency.
-		for _, idx := range layer {
-			f := followers[idx]
-			if f.OutputKey == "" {
-				continue
-			}
-			if step, ok := turn.Followers[f.AgentSlug]; ok {
-				inputs[f.OutputKey] = ResultText(step.Result)
-			}
-		}
-	}
-
-	// The turn's dominant modality is the lead's output.
-	session.State.Modality = leadStep.Result.Modality()
-
-	turn.Messages = bus.Messages()
-	e.emit(ctx, SessionEvent{Type: EventTurnDone, SessionID: session.ID, StepIndex: leadStep.Index, TurnID: turnID})
-	return turn, nil
+	return node
 }
 
 // topoLayers partitions N followers into dependency layers by Kahn's algorithm.

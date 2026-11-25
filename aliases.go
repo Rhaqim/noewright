@@ -782,6 +782,16 @@ const EventTurnDone = engine.EventTurnDone
 // BranchID is the new session.
 const EventForked = engine.EventForked
 
+// EventGraphHop fires for every edge a RunGraph run takes. Node is the
+// node the edge leaves; Hop describes it.
+const EventGraphHop = engine.EventGraphHop
+
+// EventGraphWait fires when a RunGraph run pauses at a wait node (Node).
+const EventGraphWait = engine.EventGraphWait
+
+// EventGraphDone fires when a RunGraph run finishes. TurnID is the run ID.
+const EventGraphDone = engine.EventGraphDone
+
 // SessionEvent is one event on a session's stream. Treat it as read-only: the
 // same value is delivered to every subscriber.
 type SessionEvent = engine.SessionEvent
@@ -1024,3 +1034,295 @@ const GenerationEmpty = engine.GenerationEmpty
 // GenerationError is returned when a generator fails to produce a usable result.
 // Inspect it with errors.As(err, &noewright.GenerationError{}) and switch on Kind.
 type GenerationError = engine.GenerationError
+
+////////////////////////////////////////////////////////////////////////////////
+// Bundle
+////////////////////////////////////////////////////////////////////////////////
+
+// BundleFormat is the format version this engine writes and reads.
+const BundleFormat = engine.BundleFormat
+
+// ErrInvalidBundle is returned for a bundle that cannot be read or imported as
+// written: an unknown format, a digest that does not match, a reference to a
+// record the bundle does not contain, or a record that fails its own checks.
+var ErrInvalidBundle = engine.ErrInvalidBundle
+
+// ErrBundleConflict is returned by Import when the target already holds a
+// record under the same slug and version with different content, and the
+// import's OnConflict is ConflictFail. Nothing is written.
+var ErrBundleConflict = engine.ErrBundleConflict
+
+// Bundle is a portable configuration. Marshal writes it as YAML; ParseBundle
+// reads YAML or JSON.
+type Bundle = engine.Bundle
+
+// BundleRequires is what the importing system must provide.
+type BundleRequires = engine.BundleRequires
+
+// BundleGenerator names a generator a bundle's agents use.
+type BundleGenerator = engine.BundleGenerator
+
+// BundlePrompt is a prompt record.
+type BundlePrompt = engine.BundlePrompt
+
+// BundleResponseFormat is a saved response-format record.
+type BundleResponseFormat = engine.BundleResponseFormat
+
+// BundleAgent is an agent record. Prompt, format and fallback references are
+// "slug@version".
+type BundleAgent = engine.BundleAgent
+
+// BundleFlow is a flow record.
+type BundleFlow = engine.BundleFlow
+
+// BundleFlowAgent is one agent slot in a flow; the first is the lead.
+type BundleFlowAgent = engine.BundleFlowAgent
+
+// BundleGraph is a graph record.
+type BundleGraph = engine.BundleGraph
+
+// BundleTest is a scripted run of one graph: a fresh session, then one
+// RunGraph call per step, each checked against its expectations.
+type BundleTest = engine.BundleTest
+
+// BundleTestStep is one call in a test. Say sends free text; Select picks an
+// option of a choice wait; neither sends no action.
+type BundleTestStep = engine.BundleTestStep
+
+// BundleExpect is what a step must produce. Empty fields are not checked.
+type BundleExpect = engine.BundleExpect
+
+// BundleEvidence is one test's result where the bundle was made.
+type BundleEvidence = engine.BundleEvidence
+
+// BundleTestOptions control Bundles().Test.
+type BundleTestOptions = engine.BundleTestOptions
+
+// BundleTestResult is one test's outcome.
+type BundleTestResult = engine.BundleTestResult
+
+// BundleRoot names a record Export starts from. Kind is "graph", "flow" or
+// "agent"; Version 0 is the latest active graph or flow, or the latest agent.
+type BundleRoot = engine.BundleRoot
+
+// ConflictPolicy says what Import does when the target holds a different
+// record under the same slug and version.
+type ConflictPolicy = engine.ConflictPolicy
+
+// ConflictFail stops the import; nothing is written. The default.
+const ConflictFail = engine.ConflictFail
+
+// ConflictBump imports the record as the next free version and updates the
+// bundle's references to it.
+const ConflictBump = engine.ConflictBump
+
+// ImportOptions control an import.
+type ImportOptions = engine.ImportOptions
+
+// ImportOutcome is what happened to one record.
+type ImportOutcome = engine.ImportOutcome
+
+const ImportCreate = engine.ImportCreate
+
+const ImportSkip = engine.ImportSkip
+
+const ImportConflict = engine.ImportConflict
+
+const ImportBump = engine.ImportBump
+
+// ImportItem is one record's line in an import report.
+type ImportItem = engine.ImportItem
+
+// ImportReport is what Import planned and, unless it was a dry run or failed,
+// wrote.
+type ImportReport = engine.ImportReport
+
+// BundleRegistry exports and imports bundles.
+type BundleRegistry = engine.BundleRegistry
+
+////////////////////////////////////////////////////////////////////////////////
+// Graph
+////////////////////////////////////////////////////////////////////////////////
+
+// GraphNodeKind names what a graph node does.
+type GraphNodeKind = engine.GraphNodeKind
+
+// NodeAgent runs an agent and records a step.
+const NodeAgent = engine.NodeAgent
+
+// NodeFunc calls a Go function registered with Engine.RegisterFunc. It
+// records a step only when GraphNode.Record names an agent to attribute it to.
+const NodeFunc = engine.NodeFunc
+
+// NodeDecide asks the Evaluator one question and emits the answer as the
+// node's route value. It records no step.
+const NodeDecide = engine.NodeDecide
+
+// NodeWait pauses the run until the next RunGraph call brings an Action.
+// The person's input becomes the node's output, and is recorded as a step
+// only when GraphWait.Record names an agent to attribute it to.
+const NodeWait = engine.NodeWait
+
+// Graph is a set of nodes joined by edges, run with Engine.RunGraph.
+//
+// Edges come from two places. Control edges are written in Edges; they start
+// nodes and carry routing. Data edges are inferred: when an agent node's user
+// template declares a variable (Prompt.Variables) that another node produces
+// under its output key, the consumer runs after the producer. Data edges order
+// nodes but never start one.
+//
+// A node runs once at least one control edge into it has fired and every edge
+// into it is settled — fired, or dead because its source finished without
+// firing it or never ran. So a node several branches lead to waits for the
+// branches that actually started in this run, and no longer.
+type Graph = engine.Graph
+
+// Reducer combines a new value into a session var.
+type Reducer = engine.Reducer
+
+// ReduceReplace overwrites the var (the default).
+const ReduceReplace = engine.ReduceReplace
+
+// ReduceAppend appends to a list, creating it if absent.
+const ReduceAppend = engine.ReduceAppend
+
+// ReduceMerge merges a map's keys into the var's map.
+const ReduceMerge = engine.ReduceMerge
+
+// ReduceSum adds a number to the var.
+const ReduceSum = engine.ReduceSum
+
+// GraphVar declares a session var's reducer.
+type GraphVar = engine.GraphVar
+
+// GraphNode is one node of a Graph. Set the fields for its Kind.
+type GraphNode = engine.GraphNode
+
+// GraphDecision is the question a NodeDecide asks.
+type GraphDecision = engine.GraphDecision
+
+// WaitExpect says what input a NodeWait accepts.
+type WaitExpect = engine.WaitExpect
+
+// ExpectAny accepts any action. Its text, if any, is the node's output.
+const ExpectAny = engine.ExpectAny
+
+// ExpectText accepts free text, matching Pattern when one is set.
+const ExpectText = engine.ExpectText
+
+// ExpectChoice accepts one of Options: an ActionSelect (by option_id or
+// option_index), or free text equal to an option. The option is the node's
+// output and its route value.
+const ExpectChoice = engine.ExpectChoice
+
+// GraphWait configures a NodeWait.
+type GraphWait = engine.GraphWait
+
+// GraphCursor is where a session stands in a graph between runs: the wait
+// node it is paused at and what the run had produced. It is engine-owned
+// session state, checkpointed with the run's last step so Fork resumes there.
+type GraphCursor = engine.GraphCursor
+
+// GraphEdge joins one node to one or more nodes. At most one of Route, When,
+// Uncertain, Default and OnError may be set; with none the edge always fires.
+//
+// When a node settles, every matching edge fires, so several edges can fire at
+// once. Default fires when no other edge from the node did. When an Uncertain
+// edge fires, the node's Route edges do not.
+type GraphEdge = engine.GraphEdge
+
+// GraphFunc is a Go function a NodeFunc calls. It must be safe to call
+// concurrently: parallel branches may call it at the same time.
+type GraphFunc = engine.GraphFunc
+
+// FuncCall is what a GraphFunc receives.
+type FuncCall = engine.FuncCall
+
+// FuncResult is what a GraphFunc returns.
+type FuncResult = engine.FuncResult
+
+// GraphRequest is the input to RunGraph.
+type GraphRequest = engine.GraphRequest
+
+// NodeEventKind names a NodeEvent.
+type NodeEventKind = engine.NodeEventKind
+
+const NodeStarted = engine.NodeStarted
+
+const NodeDone = engine.NodeDone
+
+const NodeFailed = engine.NodeFailed
+
+// NodeSkipped: no edge into the node fired, so it did not run.
+const NodeSkipped = engine.NodeSkipped
+
+// NodeEvent is one node's progress in a run.
+type NodeEvent = engine.NodeEvent
+
+// GraphHop is one edge a run took.
+type GraphHop = engine.GraphHop
+
+// GraphRun is the result of RunGraph.
+//
+// Expressions in edges and Save mappings see:
+//
+//	inputs   run inputs and every output produced so far, by key
+//	data     structured outputs by key (data.Ticket.priority)
+//	vars     the session vars
+//	eval     decision results by node id: label, p, certainty, noul, score,
+//	         probabilities
+//	run      errors: node id → error message, for nodes failed so far
+//	visits   node id → how many times it has run in this session's use of
+//	         the graph, resumed runs included
+type GraphRun = engine.GraphRun
+
+////////////////////////////////////////////////////////////////////////////////
+// Bundle
+////////////////////////////////////////////////////////////////////////////////
+
+// BundleSchema returns the JSON Schema for bundle files, for editors and other
+// tools that check a bundle as it is written.
+var BundleSchema = engine.BundleSchema
+
+// ParseBundle reads a bundle from YAML or JSON, checks its format version, and
+// checks its digest when it has one.
+var ParseBundle = engine.ParseBundle
+
+////////////////////////////////////////////////////////////////////////////////
+// Graph run
+////////////////////////////////////////////////////////////////////////////////
+
+// ErrInvalidGraph is returned when a graph cannot run as written. The wrapped
+// error names the problem.
+var ErrInvalidGraph = engine.ErrInvalidGraph
+
+// ErrGraphMismatch is returned when RunGraph is called for one graph on a
+// session paused in another. Set GraphRequest.Restart to abandon the pause.
+var ErrGraphMismatch = engine.ErrGraphMismatch
+
+// ErrWaitInput is returned when a paused run is resumed without an Action, or
+// with one its wait node does not accept. Nothing changes: the session stays
+// paused at the same node, so the caller can ask again.
+var ErrWaitInput = engine.ErrWaitInput
+
+////////////////////////////////////////////////////////////////////////////////
+// Graph store
+////////////////////////////////////////////////////////////////////////////////
+
+// GraphRecord is a saved, versioned graph. Records never change: an edit is a
+// new version, and SetActive chooses which version serves.
+type GraphRecord = engine.GraphRecord
+
+// GraphRegistry saves, resolves, validates and plans graphs, with the same
+// version semantics as FlowRegistry: Get with version 0 resolves the latest
+// ACTIVE version, Latest includes drafts, SetActive is publish and rollback.
+type GraphRegistry = engine.GraphRegistry
+
+// GraphPlan is a graph's resolved wiring, for inspection and visualization.
+type GraphPlan = engine.GraphPlan
+
+// GraphPlanNode is one node in a plan.
+type GraphPlanNode = engine.GraphPlanNode
+
+// GraphPlanEdge is one edge in a plan.
+type GraphPlanEdge = engine.GraphPlanEdge
