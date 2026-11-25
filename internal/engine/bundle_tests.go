@@ -26,11 +26,11 @@ func (s *bundleService) Test(ctx context.Context, b *Bundle, opts BundleTestOpti
 		if len(opts.Only) > 0 && !slices.Contains(opts.Only, t.Name) {
 			continue
 		}
-		ev, err := s.runTest(ctx, t, opts)
+		ev, texts, err := s.runTest(ctx, t, opts)
 		if err != nil {
 			return results, fmt.Errorf("noewright: bundle test %q: %w", t.Name, err)
 		}
-		res := BundleTestResult{Evidence: ev}
+		res := BundleTestResult{Evidence: ev, Texts: texts}
 		if before, ok := prior[t.Name]; ok {
 			for k, h := range ev.Outputs {
 				if old, had := before.Outputs[k]; had && old != h {
@@ -46,16 +46,18 @@ func (s *bundleService) Test(ctx context.Context, b *Bundle, opts BundleTestOpti
 
 // runTest runs one test in a fresh session. A failed expectation is recorded
 // on the evidence; an error means the test could not run at all.
-func (s *bundleService) runTest(ctx context.Context, t BundleTest, opts BundleTestOptions) (BundleEvidence, error) {
+func (s *bundleService) runTest(ctx context.Context, t BundleTest, opts BundleTestOptions) (BundleEvidence, map[string]string, error) {
 	e := s.e
-	ev := BundleEvidence{Test: t.Name, At: time.Now().UTC().Format(time.RFC3339), Outputs: map[string]string{}, Priced: true}
+	ev := BundleEvidence{Test: t.Name, At: time.Now().UTC().Format(time.RFC3339), Outputs: map[string]string{}, Priced: true,
+		Model: opts.GeneratorOverride}
+	texts := map[string]string{}
 	slug, version, err := parseRef(t.Graph)
 	if err != nil {
-		return ev, err
+		return ev, nil, err
 	}
 	sess := &Session{PlatformID: "bundle-test:" + t.Name, Tags: []string{"bundle-test"}, State: State{Vars: maps.Clone(t.Vars)}}
 	if err := e.sessions.Create(ctx, sess); err != nil {
-		return ev, err
+		return ev, nil, err
 	}
 	fail := func(step int, format string, args ...any) {
 		ev.Failures = append(ev.Failures, fmt.Sprintf("step %d: ", step+1)+fmt.Sprintf(format, args...))
@@ -68,7 +70,7 @@ func (s *bundleService) runTest(ctx context.Context, t BundleTest, opts BundleTe
 		maps.Copy(inputs, st.Inputs)
 		var mu sync.Mutex
 		outputs := map[string]string{} // node → output text, every kind of node
-		req := GraphRequest{Inputs: inputs, Overrides: opts.Overrides, Params: opts.Params,
+		req := GraphRequest{Inputs: inputs, Overrides: opts.Overrides, Params: opts.Params, GeneratorOverride: opts.GeneratorOverride,
 			OnNode: func(ne NodeEvent) {
 				if ne.Kind == NodeDone {
 					mu.Lock()
@@ -95,8 +97,10 @@ func (s *bundleService) runTest(ctx context.Context, t BundleTest, opts BundleTe
 			ev.Priced = false
 		}
 		for node, text := range outputs {
+			k := fmt.Sprintf("step%d.%s", i+1, node)
 			sum := sha256.Sum256([]byte(text))
-			ev.Outputs[fmt.Sprintf("step%d.%s", i+1, node)] = hex.EncodeToString(sum[:])
+			ev.Outputs[k] = hex.EncodeToString(sum[:])
+			texts[k] = text
 		}
 
 		x := st.Expect
@@ -137,7 +141,7 @@ func (s *bundleService) runTest(ctx context.Context, t BundleTest, opts BundleTe
 	if len(ev.Outputs) == 0 {
 		ev.Outputs = nil
 	}
-	return ev, nil
+	return ev, texts, nil
 }
 
 // SetEvidence replaces the bundle's evidence with these results. Marshal the

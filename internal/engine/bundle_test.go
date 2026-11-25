@@ -315,7 +315,8 @@ func bundleSuite(t *testing.T, pg bool) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(results) != 2 || !results[0].Evidence.Passed || len(results[0].Evidence.Outputs) == 0 {
+		if len(results) != 2 || !results[0].Evidence.Passed || len(results[0].Evidence.Outputs) == 0 ||
+			!strings.HasPrefix(results[0].Texts["step2.refund"], "REFUND[") {
 			t.Fatalf("happy path = %+v", results[0])
 		}
 		bad := results[1].Evidence

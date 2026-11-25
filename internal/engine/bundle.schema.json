@@ -758,6 +758,10 @@
         "passed": {
           "type": "boolean"
         },
+        "model": {
+          "type": "string",
+          "description": "The generator the run used, when one was chosen for the whole run."
+        },
         "at": {
           "type": "string"
         },

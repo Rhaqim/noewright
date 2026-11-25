@@ -180,8 +180,11 @@ type BundleExpect struct {
 
 // BundleEvidence is one test's result where the bundle was made.
 type BundleEvidence struct {
-	Test     string   `json:"test" yaml:"test"`
-	Passed   bool     `json:"passed" yaml:"passed"`
+	Test   string `json:"test" yaml:"test"`
+	Passed bool   `json:"passed" yaml:"passed"`
+	// Model is the generator the run used (BundleTestOptions.GeneratorOverride),
+	// empty when each agent used its own.
+	Model    string   `json:"model,omitempty" yaml:"model,omitempty"`
 	At       string   `json:"at,omitempty" yaml:"at,omitempty"`
 	Failures []string `json:"failures,omitempty" yaml:"failures,omitempty"`
 	USD      float64  `json:"usd,omitempty" yaml:"usd,omitempty"`
@@ -201,11 +204,18 @@ type BundleTestOptions struct {
 	// like, which bundles never carry).
 	Overrides map[string]any
 	Params    map[string]any
+	// GeneratorOverride runs every agent on this registered generator (the
+	// model a user picked), as GraphRequest.GeneratorOverride does. It is
+	// recorded on the evidence as Model.
+	GeneratorOverride string
 }
 
 // BundleTestResult is one test's outcome.
 type BundleTestResult struct {
 	Evidence BundleEvidence
+	// Texts maps "step<n>.<node>" to that node's output text, for showing
+	// what ran. The evidence keeps only hashes of these.
+	Texts map[string]string
 	// Changed lists outputs whose hash differs from the bundle's evidence for
 	// this test. Model output varies, so a change is reported, not failed.
 	Changed []string
