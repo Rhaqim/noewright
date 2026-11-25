@@ -240,6 +240,32 @@ func TestRunGraph_DecideRoutesAndJoins(t *testing.T) {
 	})
 }
 
+// A run-wide generator override applies to agent nodes without their own.
+func TestRunGraph_GeneratorOverride(t *testing.T) {
+	ctx := context.Background()
+	e := graphEngine(t, "graph_genoverride")
+	e.RegisterGenerator("other", constGen("OTHER"))
+	mkGenAgent(t, e, "a", "echo", "A", nil)
+	mkGenAgent(t, e, "b", "echo", "B", nil)
+	g := Graph{Slug: "o", Entry: "a",
+		Nodes: []GraphNode{agentNode("a", "a", "A"), {ID: "b", Kind: NodeAgent, Agent: &FlowAgent{AgentSlug: "b", GeneratorOverride: "echo"}}},
+		Edges: []GraphEdge{{From: "a", To: to("b")}}}
+	run, err := e.RunGraph(ctx, newSession(t, e, nil), GraphRequest{Graph: g, GeneratorOverride: "other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ResultText(run.Nodes["a"].Result) != "OTHER" || ResultText(run.Nodes["b"].Result) != "B" {
+		t.Fatalf("a = %q (want the run's generator), b = %q (want its own)", ResultText(run.Nodes["a"].Result), ResultText(run.Nodes["b"].Result))
+	}
+}
+
+type constGen string
+
+func (constGen) Modality() Modality { return ModalityText }
+func (c constGen) Generate(context.Context, GenerateRequest) (Result, error) {
+	return NewTextResult(string(c), "stop", 1, 1), nil
+}
+
 // Data edges are inferred from templates: a node reading another's output runs
 // after it even when both are reached from the same parent.
 func TestRunGraph_InferredDataEdge(t *testing.T) {

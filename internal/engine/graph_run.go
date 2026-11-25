@@ -4,6 +4,7 @@ package engine
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -676,7 +677,7 @@ func (e *Engine) graphNodeWork(session *Session, req GraphRequest, c *compiledGr
 				Inputs:               in,
 				Params:               mergeParams(req.Params, fa.Params),
 				Overrides:            pickOverrides(fa.Overrides, req.Overrides),
-				GeneratorOverride:    fa.GeneratorOverride,
+				GeneratorOverride:    cmp.Or(fa.GeneratorOverride, req.GeneratorOverride),
 				turnID:               runID,
 				turnRole:             role,
 				bus:                  bus,

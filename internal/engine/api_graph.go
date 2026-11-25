@@ -242,6 +242,10 @@ type GraphRequest struct {
 	// Params and Overrides apply to every agent node, under each node's own.
 	Params    map[string]any
 	Overrides map[string]any
+	// GeneratorOverride routes every agent node that sets no GeneratorOverride
+	// of its own to this registered generator for this run — the model a user
+	// picked, say, or a simulator.
+	GeneratorOverride string
 	// OnChunk receives the chunks of every agent node that streams.
 	OnChunk func(node string, c Chunk)
 	// OnNode receives each node's progress. It is called from the node's own
